@@ -1,0 +1,1 @@
+/usr/bin/gcc -g CMakeFiles/bn_babichev.dir/main.c.o CMakeFiles/bn_babichev.dir/bn.c.o CMakeFiles/bn_babichev.dir/test1.c.o -o bn_babichev 
