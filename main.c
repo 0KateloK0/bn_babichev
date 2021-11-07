@@ -1,6 +1,6 @@
-#include "test1.c"
+#include "tests.h"
 
 int main () {
-    test();
+    test1();
     return 0;
 }

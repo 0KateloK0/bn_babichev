@@ -112,3 +112,19 @@ int bn_init_string (bn *t, const char *init_string) {
     balance(t);
     return BN_OK;
 }
+
+const char *ABC = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+const char *bn_to_string (bn const *t, int radix) {
+    char *r = malloc(t->size * sizeof(char) * 5);
+    char *x = r;
+    for (size_t i = 0; i < t->size; ++i) {
+        int d = t->body[i];
+        while (d != 0) {
+            *(x++) = ABC[d % radix];
+            d /= radix;
+        }
+    }
+    *x = '\0';
+    return r;
+}

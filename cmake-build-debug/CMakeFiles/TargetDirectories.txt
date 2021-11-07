@@ -1,3 +1,0 @@
-/home/katelok/contestC++/bn_babichev/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/katelok/contestC++/bn_babichev/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/katelok/contestC++/bn_babichev/cmake-build-debug/CMakeFiles/bn_babichev.dir
