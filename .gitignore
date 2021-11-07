@@ -56,3 +56,4 @@ dkms.conf
 scratch*.c
 .idea/
 *.swp
+cmake-build-debug/
