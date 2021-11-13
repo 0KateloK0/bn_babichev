@@ -61,6 +61,7 @@ void balance (bn *t) {
 }
 
 //TODO: requires fucking rewriting
+
 // выделяет память необходимого для вмещения new_size эл-ов размера
 void resize (bn *t, size_t new_size) {
     balance(t);
@@ -128,6 +129,8 @@ size_t max (size_t a, size_t b) {
     return a > b ? a : b;
 }
 
+// TODO: also requires checking
+
 int bn_add_to (bn *t, bn const *right) {
     if (right->size > t->size) resize(t, right->size);
     int carry = 0;
@@ -170,6 +173,7 @@ int bn_mul_rec_copy (bn *a, bn const *t, size_t l, size_t r) {
 
 
 // TODO: requires at least one test
+// TODO: add deletion of temporary values
 int bn_mul_rec (bn *t, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
     size_t n = max(r2 - l2, r1 - l1) / 2;
 
@@ -213,6 +217,9 @@ int bn_mul_to (bn *t, bn const *right) {
     return BN_OK;
 }
 
+
+// TODO: requires checking
+
 // uses binary search for quick division
 void bn_div_ (bn *t, bn const *right, int* rem) {
 
@@ -238,6 +245,18 @@ void bn_div_ (bn *t, bn const *right, int* rem) {
     bn_delete(diff);
 
 }
+
+int bn_pow_to (bn *t, int degree) {
+    bn *tmp = bn_init(t);
+    while (degree != 0) {
+        if (degree % 2 == 1)
+            bn_mul_to(t, tmp);
+        bn_mul_to(tmp, tmp);
+        degree >>= 1;
+    }
+    return BN_OK;
+}
+
 
 
 // выбираем первые н/2 битов, берем все что до них, выполняем пару умножений
