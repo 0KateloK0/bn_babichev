@@ -7,10 +7,11 @@
 #pragma once
 
 // TODO: general, add everywhere those fucking checks for errors (omfg)
+// TODO: general, add everywhere putting up with signs
 
 // TODO: decide with this value
 // максимальный размер для одной цифры bn
-const int bn_MXV = 32768;
+const int bn_MXV = 1000000000;
 
 struct bn_s {
     int *body; // тело bn_s. Каждое значение лежит в пределах [-bn_MXV;bn_MXV]
@@ -271,7 +272,7 @@ bn* bn_div_sml(bn const *t, int right) {
     return NULL;
 }
 
-// TODO: check this func
+// TODO: check this func, add stuff
 
 int bn_root_to (bn *t, int reciprocal) {
     bn *l = bn_new();
@@ -295,8 +296,36 @@ int bn_root_to (bn *t, int reciprocal) {
     return BN_OK;
 }
 
+int bn_init_string (bn *t, const char *init_string) {
+    bn_clear(t);
+    size_t counter = 0;
+    int d = 0;
+    for (const char *x = init_string; *x != '\0'; ++x) {
+        d = d * 10 + *x - '0';
+        if (counter == 10) {
+            push_back(t, d);
+        }
+        ++counter;
+    }
+    return BN_OK;
+}
 
+// TODO: create needed helper-func, and actually dafuq i made..
 
+const char *bn_to_string(bn const *t, int radix) {
+    char *s = "";
+    bn *c = bn_init(t);
+    int rem;
+    while (c->size != 0) {
+        bn_div_to_sml(c, radix, rem);
+        while (rem != 0) {
+            s += rem % 10 + '0';
+            rem /= 10;
+        }
+    }
+
+    return s;
+}
 
 // выбираем первые н/2 битов, берем все что до них, выполняем пару умножений
 //
