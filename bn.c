@@ -246,6 +246,8 @@ void bn_div_ (bn *t, bn const *right, int* rem) {
 
 }
 
+// TODO: check this func, add deleting and stuff
+
 int bn_pow_to (bn *t, int degree) {
     bn *tmp = bn_init(t);
     while (degree != 0) {
@@ -256,6 +258,43 @@ int bn_pow_to (bn *t, int degree) {
     }
     return BN_OK;
 }
+
+bn *bn_pow (bn const *t, int degree) {
+    bn *ret = bn_init(t);
+    bn_pow_to(ret, degree);
+    return ret;
+}
+
+// TODO: make this function (just a copy of div_to_sml)
+
+bn* bn_div_sml(bn const *t, int right) {
+    return NULL;
+}
+
+// TODO: check this func
+
+int bn_root_to (bn *t, int reciprocal) {
+    bn *l = bn_new();
+    bn *r = bn_init(t);
+    bn *pow = bn_pow(t, reciprocal);
+    bn *diff = bn_sub(pow, t);
+    while (diff->size != 1) {
+        if (bn_cmp(pow, t)) {
+            bn_add_to(l, bn_div_sml(bn_sub(r, l), 2));
+        }
+        else {
+            bn_sub_to(r, bn_div_sml(bn_sub(r, l), 2));
+        }
+        bn_clear(pow);
+        pow = bn_pow(t, reciprocal);
+        bn_clear(diff);
+        diff = bn_sub(pow, t);
+    }
+    bn_clear(t);
+    t = l;
+    return BN_OK;
+}
+
 
 
 
