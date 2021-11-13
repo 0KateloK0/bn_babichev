@@ -6,6 +6,9 @@
 #include "bn.h"
 #pragma once
 
+// TODO: general, add everywhere those fucking checks for errors (omfg)
+
+// TODO: decide with this value
 // максимальный размер для одной цифры bn
 const int bn_MXV = 32768;
 
@@ -26,6 +29,7 @@ void copy (const int *orig, int *cpy, const size_t n) {
     }
 }*/
 
+// TODO: rewrite using realloc
 // увеличивает размер массива в 2 раза с копированием элементов
 void grow (bn *t) {
     int *cpy = calloc(t->capacity + t->capacity, sizeof(int));
@@ -49,12 +53,14 @@ void shrink (bn *t) {
     t->size = t->size <= t->capacity ? t->size : t->capacity;
 }
 
+// TODO: decide whether this thing is actually useful..
 // уменьшает размер массива до необходимого
 void balance (bn *t) {
     while (t->size + t->size < t->capacity)
         shrink(t);
 }
 
+//TODO: requires fucking rewriting
 // выделяет память необходимого для вмещения new_size эл-ов размера
 void resize (bn *t, size_t new_size) {
     balance(t);
@@ -162,6 +168,8 @@ int bn_mul_rec_copy (bn *a, bn const *t, size_t l, size_t r) {
     return BN_OK;
 }
 
+
+// TODO: requires at least one test
 int bn_mul_rec (bn *t, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
     size_t n = max(r2 - l2, r1 - l1) / 2;
 
@@ -186,11 +194,14 @@ int bn_mul_rec (bn *t, bn const *right, size_t l1, size_t r1, size_t l2, size_t 
 
     bn_clear(t);
 
-    resize(t, n * 2);
+    concat(t, b0b1);
+    concat(t, bn_sub(bn_sub(comb, a0a1), a0a1));
+    concat(t, a0a1);
+    /*resize(t, n * 2);
     memcpy(t->body, b0b1->body, b0b1->size);
     bn *tmp = bn_sub(bn_sub(comb, a0a1), a0a1);
     memcpy(t->body + b0b1->size, tmp->body, tmp->size);
-    memcpy(t->body + b0b1->size + tmp->size, a0a1, a0a1->size);
+    memcpy(t->body + b0b1->size + tmp->size, a0a1, a0a1->size);*/
 
     return BN_OK;
 }
@@ -201,6 +212,33 @@ int bn_mul_to (bn *t, bn const *right) {
     balance(t);
     return BN_OK;
 }
+
+// uses binary search for quick division
+void bn_div_ (bn *t, bn const *right, int* rem) {
+
+    bn *l = bn_new();
+    bn *r = bn_init(t);
+    bn *mul = bn_mul(l, right);
+    bn *diff = bn_sub(t, mul);
+    while (diff->size != 1) {
+        if (bn_cmp(mul, t) < 0) {
+            bn_add_to(l, bn_div_to_sml(bn_sub(r, l), 2));
+        }
+        else {
+            bn_sub_to(r, bn_div_to_sml(bn_sub(r, l), 2));
+        }
+        mul = bn_mul(l, right);
+        diff = bn_sub(t, mul);
+    }
+    bn_delete(t);
+    t = l;
+    bn_delete(r);
+    bn_delete(mul);
+    *rem = diff->body[0];
+    bn_delete(diff);
+
+}
+
 
 // выбираем первые н/2 битов, берем все что до них, выполняем пару умножений
 //
