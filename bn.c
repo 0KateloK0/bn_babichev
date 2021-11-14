@@ -467,22 +467,28 @@ bn *bn_pow (bn const *t, int degree) {
 int bn_root_to (bn *t, int reciprocal) {
     bn *l = bn_new();
     bn *r = bn_init(t);
-    bn *pow = bn_pow(t, reciprocal);
-    bn *diff = bn_sub(pow, t);
-    while (diff->size != 1) {
-        if (bn_cmp(pow, t)) {
-            bn_add_to(l, bn_div_sml(bn_sub(r, l), 2));
+    bn *diff = bn_sub(r, l);
+    while (diff->size != 1 || diff->body[0] != 1) {
+        bn *tmp = bn_add(l, r);
+        bn *mid = bn_div_sml(tmp, 2);
+        bn_delete(tmp);
+        bn *pow = bn_pow(mid, reciprocal);
+        if (bn_cmp(pow, t) < 0) {
+            bn_copy(l, mid);
         }
         else {
-            bn_sub_to(r, bn_div_sml(bn_sub(r, l), 2));
+            bn_copy(r, mid);
         }
-        bn_clear(pow);
-        pow = bn_pow(t, reciprocal);
-        bn_clear(diff);
-        diff = bn_sub(pow, t);
+        bn *s = bn_sub(r, l);
+        bn_copy(diff, s);
+        bn_delete(mid);
+        bn_delete(pow);
+        bn_delete(s);
     }
-    bn_clear(t);
-    t = l;
+    bn_copy(t, r);
+    bn_delete(l);
+    bn_delete(r);
+    bn_delete(diff);
     return BN_OK;
 }
 
