@@ -3,13 +3,50 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "bn.h"
+//#include "bn.h"
+//#pragma once
 #pragma once
-
-// TODO: general, add everywhere those fucking checks for errors (omfg)
-// TODO: general, add everywhere putting up with signs
-
-// TODO: decide with this value
+// Файл bn.h
+struct bn_s;
+typedef struct bn_s bn;
+enum bn_codes {
+    BN_OK, BN_NULL_OBJECT, BN_NO_MEMORY, BN_DIVIDE_BY_ZERO
+};
+bn *bn_new(); // Создать новое BN
+bn *bn_init(bn const *orig); // Создать копию существующего BN
+// Инициализировать значение BN десятичным представлением строки
+int bn_init_string(bn *t, const char *init_string);
+// Инициализировать значение BN представлением строки
+// в системе счисления radix
+int bn_init_string_radix(bn *t, const char *init_string, int radix);
+// Инициализироват+ значение BN заданным целым числом
+int bn_init_int(bn *t, int init_int);
+// Уничтожить BN (освободить память)
+int bn_delete(bn *t);
+// Операции, аналогичные +=, -=, *=, /=, %=
+int bn_add_to(bn *t, bn const *right);
+int bn_sub_to(bn *t, bn const *right);
+int bn_mul_to(bn *t, bn const *right);
+int bn_div_to(bn *t, bn const *right);
+int bn_mod_to(bn *t, bn const *right);
+// Возвести число в степень degree
+int bn_pow_to(bn *t, int degree);
+// Извлечь корень степени reciprocal из BN
+int bn_root_to(bn *t, int reciprocal);
+// Аналоги операций x = l+r (l-r, l*r, l/r, l%r)
+bn* bn_add(bn const *left, bn const *right);
+bn* bn_sub(bn const *left, bn const *right);
+bn* bn_mul(bn const *left, bn const *right);
+bn* bn_div(bn const *left, bn const *right);
+bn* bn_mod(bn const *left, bn const *right);
+// Выдать представление BN в системе счислени: radix в виде строки
+// Строку после использования потребуется удалить.
+const char *bn_to_string(bn const *t, int radix);
+// Если левое меньше, вернуть <0; если равны, вернуть 0; иначе >0
+int bn_cmp(bn const *left, bn const *right);
+int bn_neg(bn *t); // Изменить знак на противоположный
+int bn_abs(bn *t); // Взять модуль
+int bn_sign(bn const *t); //-1 если t<0; 0 если t = 0, 1 если t>0
 // максимальный размер для одной цифры bn
 const int bn_MXV = 32768;
 
@@ -20,17 +57,6 @@ struct bn_s {
     int sign;
 };
 
-/*// функции для поддержки размера массива
-// копирует n эл-ов из массива orig в массив cpy
-void copy (const int *orig, int *cpy, const size_t n) {
-    if (cpy == NULL) cpy = malloc(n * sizeof(int));
-    if (cpy == NULL) return;
-    for (size_t i = 0; i < n; ++i) {
-        cpy[i] = orig[i];
-    }
-}*/
-
-// TODO: rewrite using realloc
 // увеличивает размер массива в 2 раза с копированием элементов
 void grow (bn *t) {
     int *cpy = calloc(t->capacity + t->capacity, sizeof(int));
@@ -63,8 +89,6 @@ void balance (bn *t) {
         shrink(t);
 }
 
-//TODO: requires fucking rewriting
-
 // выделяет память необходимого для вмещения new_size эл-ов размера
 void resize (bn *t, size_t new_size) {
     balance(t);
@@ -81,12 +105,6 @@ void push_back (bn *t, const int x) {
         resize(t, t->size + 1);
         t->body[t->size++] = x;
     }
-}
-
-// удаляет эл-т из массива
-void pop_back (bn *t) {
-    resize(t, t->size - 1);
-    --t->size;
 }
 
 void bn_copy (bn *t, bn const *right) {
@@ -160,11 +178,11 @@ int bn_delete (bn *t) {
     return BN_OK;
 }
 
-void concat (bn *t1, bn *t2) {
+/*void concat (bn *t1, bn *t2) {
     resize(t1, t1->size + t2->size);
     memcpy(t1->body + t1->size, t2->body, t2->size * sizeof(int));
     t1->size += t2->size;
-}
+}*/
 
 size_t max (size_t a, size_t b) {
     return a > b ? a : b;
@@ -203,7 +221,7 @@ int bn_add_to (bn *t, bn const *right) {
             t->body[i] = bn_MXV - t->body[i];
             carry = -s;
         }
-        else if (d > bn_MXV) carry = s;
+        else if (d >= bn_MXV) carry = s;
         else carry = 0;
     }
     t->size = max(t->size, right->size);
@@ -233,16 +251,14 @@ bn* bn_sub(bn const *left, bn const *right) {
     return ret;
 }
 
-
-
-int bn_mul_copy (bn *a, bn const *t, size_t l, size_t r) {
+/*int bn_mul_copy (bn *a, bn const *t, size_t l, size_t r) {
     resize(a, r - l);
     if (t->size >= r) {
         memcpy(a->body, t->body + l, (r - l) * sizeof(int));
         a->size = r - l;
     }
     return BN_OK;
-}
+}*/
 
 bn *bn_mul_sml (bn const *t, int right) {
     bn *ret = bn_new();
@@ -268,10 +284,6 @@ int bn_mul_to (bn *t, bn const *right) {
     bn_copy(t, ret);
     bn_delete(ret);
     balance(t);
-//    bn *ret = bn_mul_rec(t, right, 0, t->size, 0, right->size);
-//    bn_copy(t, ret);
-//    t->sign = t->sign * right->sign;
-//    bn_delete(ret);
     return BN_OK;
 }
 
@@ -280,7 +292,6 @@ bn *bn_mul (bn const *left, bn const *right) {
     bn_mul_to(ret, right);
     return ret;
 }
-
 
 int bn_cmp (bn const *left, bn const * right) {
     if (left->size != right->size)
@@ -294,12 +305,6 @@ int bn_cmp (bn const *left, bn const * right) {
     if (i == 0) return 0;
     return left->sign * (left->body[i - 1] < right->body[i - 1] ? -1 : 1);
 }
-
-// TODO: make this function (just a copy of div_to_sml)
-
-/*bn* bn_div_sml(bn const *t, int right) {
-    bn *ret =
-}*/
 
 bn *bn_div_sml (bn const *t, int right) {
     bn *ret = bn_new();
@@ -315,15 +320,14 @@ bn *bn_div_sml (bn const *t, int right) {
     return ret;
 }
 
-// TODO: requires checking
-
-// uses binary search for quick division
-void bn_div_ (bn *t, bn const *right, bn* rem) {
+int bn_div_ (bn *t, bn const *right, bn* rem) {
+    if (right->size == 1 && right->body[0] == 0)
+        return BN_DIVIDE_BY_ZERO;
     int s = t->sign * right->sign;
     if (bn_cmp(t, right) < 0) {
         *t = *bn_new();
         *rem = *bn_new();
-        return;
+        return BN_OK;
     }
     bn *ret = bn_new();
     for (size_t i = t->size; i >= right->size;) {
@@ -348,6 +352,7 @@ void bn_div_ (bn *t, bn const *right, bn* rem) {
     bn_copy(t, ret);
     bn_delete(ret);
     t->sign = s;
+    return BN_OK;
 }
 
 int bn_div_to(bn *t, bn const *right) {
@@ -364,8 +369,6 @@ bn *bn_div(bn const *left, bn const *right) {
     bn_delete(rem);
     return ret;
 }
-
-// TODO: check this func, add deleting and stuff
 
 int bn_pow_to (bn *t, int degree) {
     bn *tmp = bn_init(t);
@@ -391,10 +394,6 @@ bn *bn_pow (bn const *t, int degree) {
     bn_pow_to(ret, degree);
     return ret;
 }
-
-
-
-// TODO: check this func, add stuff
 
 int bn_root_to (bn *t, int reciprocal) {
     bn *l = bn_new();
@@ -437,43 +436,54 @@ int bn_init_string_check (const char * s, size_t n) {
     return 0;
 }
 
+const char * ABC = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+int convert (char x) {
+    if (x >= '0' && x <= '9') return x - '0';
+    return x - 'A' + 10;
+}
+
 // дело было вечером, код становился с каждой минутой все хуже и хуже (умоляю не смотрите сюда)
 int bn_init_string_radix(bn *t, const char *init_string, int radix) {
     bn_clear(t);
+    if (init_string[0] == '-') {
+        t->sign = -1;
+        ++init_string;
+    }
     size_t counter = 0;
     for (const char *x = init_string; *x != '\0'; ++x) {
         ++counter;
     }
-    int *ans = malloc((counter / 5 + 10) * sizeof(int));
+    int *ans = malloc(counter * sizeof(int) * 20);
     size_t am = 0;
-    char * s = malloc(counter * sizeof(char));
-    memcpy(s, init_string, counter * sizeof(char));
+    char * s = malloc((counter + 10) * sizeof(char) * 20);
+    memcpy(s, init_string, (counter + 10) * sizeof(char) * 20);
     char *ret; size_t size;
     do {
-        ret = malloc((counter / 5 + 10) * sizeof(int));
+        ret = malloc((counter + 10) * sizeof(int) * 20);
         size = 0;
         int d = 0;
         size_t i = 0;
         while (s[i] == '0') ++i;
         size_t q = i;
-        while (d < bn_MXV) {
-            d = d * radix + s[i + q] - '0';
+        while (d < bn_MXV && s[i + q] != '\0') {
+            d = d * radix + convert(s[i + q]);
             ++q;
         }
         for (i += q; i < counter; ++i) {
             if (d > bn_MXV) {
                 int dig = d / bn_MXV;
                 do {
-                    ret[size++] = (char)(dig % radix  + '0');
+                    ret[size++] = ABC[dig % radix];
                     dig /= radix;
                 } while (dig != 0);
                 d %= bn_MXV;
             }
             else ret[size++] = '0';
-            d = d * radix + s[i] - '0';
+            d = d * radix + convert(s[i]);
         }
         if (d > bn_MXV) {
-            ret[size++] = (char)(d / bn_MXV % radix  + '0');
+            ret[size++] = ABC[d / bn_MXV % radix];
         }
         ans[am++] = d % bn_MXV;
         counter = size;
@@ -482,12 +492,12 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
     if (ret[0] != 0) {
         int d = 0;
         for (size_t i = 0; i < size; ++i)
-            d = d * radix + ret[i] - '0';
+            d = d * radix + convert(ret[i]);
         ans[am++] = d;
     }
     resize(t, size);
     for (size_t i = 0; i < am; ++i)
-        t->body[am - i - 1] = ans[i];
+        t->body[i] = ans[i];
     t->size = am;
 
     free(ret);
@@ -498,6 +508,20 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
 int bn_init_string (bn *t, const char *init_string) {
     return bn_init_string_radix(t, init_string, 10);
 }
+
+/*bn *bn_div_sml (bn const *t, int right) {
+    bn *ret = bn_new();
+    resize(ret, t->size);
+    ret->size = t->size;
+    int carry = 0;
+    for (size_t i = t->size; i > 0; --i) {
+        int d = t->body[i - 1] + carry * bn_MXV;
+        ret->body[i - 1] = d / right;
+        carry = d % right;
+    }
+    balance(ret);
+    return ret;
+}*/
 
 int bn_div_sml_(bn *t, int right) {
     bn *ret = bn_new();
@@ -515,62 +539,61 @@ int bn_div_sml_(bn *t, int right) {
     return carry;
 }
 
-
-/*int bn_init_string(bn *t, const char *init_string) {
-
-    size_t init_string_size = string_size(init_string);
-    char *str_copy = malloc(init_string_size * sizeof(char));
-
-    for (size_t i = 0; i < init_string_size; ++i) {
-        if (init_string[i] != '-') {
-            str_copy[i] = init_string[i];
-        } else {
-            str_copy[i] = '0';
-        }
-    }
-
-    pop_back(t);
-    for (int i = (int)init_string_size; i > 0; i -= BASE_DIGITS) {
-
-        if (i < BASE_DIGITS) {
-            push_back(t, atoi( substr(str_copy, 0, i) ) );
-        } else {
-            push_back(t, atoi( substr(str_copy, i - BASE_DIGITS, BASE_DIGITS) ) );
-        }
-
-    }
-
-    remove_leading_zeros(t);
-    free(str_copy);
-
-    return BN_OK;
-
-}*/
-
-// TODO: create needed helper-func, and actually dafuq i made..
-
 const char *bn_to_string(bn const *t, int radix) {
-    const char *s = "";
+    bn *base = bn_new();
+    bn_init_int(base, radix);
+    char *s = malloc(t->size * radix);
+    char *ss = malloc(t->size * radix);
+    size_t ind = 0;
     bn *c = bn_init(t);
     int rem;
-    while (c->size != 0) {
+    while (c->size != 1) {
         rem = bn_div_sml_(c, radix);
-        size_t count = 0;
-        while (rem != 0) {
-            s = s + (rem % 10 + '0');
-            rem /= 10;
-            ++count;
-        }
-        if (count != 5) {
-            for (;count < 5; ++count) {
-                s = '0' + s;
-            }
-        }
+        s[ind++] = ABC[rem % radix];
+        rem /= radix;
     }
+    while (c->body[0] != 0) {
+        s[ind++] = ABC[c->body[0] % radix];
+        c->body[0] /= radix;
+    }
+    while (s[ind - 1] == '0')
+        --ind;
+//    s[ind] = '\0';
 
-    return s;
+    for (size_t i = 0; i < ind; ++i) {
+        ss[ind - i - 1] = s[i];
+    }
+    free(s);
+    ss[ind] = '\0';
+    return ss;
 }
 
+int bn_mod_to (bn *t, bn const *right) {
+    bn *rem = bn_new();
+    bn_div_(t, right, rem);
+    bn_copy(t, rem);
+    return BN_OK;
+}
+
+bn* bn_mod (bn const *left, bn const *right) {
+    bn *cpy = bn_init(left);
+    bn_mod_to(cpy, right);
+    return cpy;
+}
+
+int bn_neg(bn *t) {
+    t->sign = -t->sign;
+    return BN_OK;
+}
+
+int bn_abs(bn *t) {
+    t->sign = 1;
+    return BN_OK;
+}
+
+int bn_sign (bn const *t) {
+    return t->sign;
+}
 void get (bn *t, int n, int sign) {
     resize(t, n);
     for (size_t i = 0; i < n; ++i) {
@@ -587,155 +610,3 @@ void print (bn const *t) {
         printf("%d ", t->body[i]);
     }
 }
-
-/*bn *l = bn_new();
-    bn *r = bn_init(t);
-    bn *mul = bn_mul(l, right);
-    bn *diff = bn_sub(t, mul);
-    while (diff->size != 1) {
-        bn *step = bn_div_sml(bn_sub(r, l), 2);
-        if (bn_cmp(mul, t) < 0) {
-            bn_add_to(l, step);
-        }
-        else {
-            bn_sub_to(r, step);
-        }
-        mul = bn_mul(step, right);
-        diff = bn_sub(t, mul);
-    }
-    bn_delete(t);
-    *t = *l;
-    bn_delete(r);
-    bn_delete(mul);
-    *rem = diff->body[0];
-    bn_delete(diff);*/
-
-/*bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
-    bn *nol = bn_new();
-    if (!bn_cmp(left, nol) || !bn_cmp(right, nol)) return nol;
-    bn_delete(nol);
-    size_t n = max(r2 - l2, r1 - l1);
-    if (n <= 1) {
-        bn *ret = bn_new();
-        int d = left->body[l1] * right->body[l2];
-        ret->body[0] = d % bn_MXV;
-        if (d >= bn_MXV) push_back(ret, d / bn_MXV);
-        return ret;
-    }
-
-    n >>= 1;
-    r1 = max(n, r1); r2 = max(n, r2);
-
-    bn *a0 = bn_new(), *a1 = bn_new(), *b0 = bn_new(), *b1 = bn_new();
-    bn_mul_rec_copy(a0, left, n, max(r1, r2));
-    bn_mul_rec_copy(b0, left, l1, n);
-    bn_mul_rec_copy(a1, right, n, max(r1, r2));
-    bn_mul_rec_copy(b1, right, l2, n);
-
-    bn *a0a1 = bn_mul_rec(a0, a1, 0, r1 - n, 0, r2 - n);
-    bn *b0b1 = bn_mul_rec(b0, b1, 0, n - l1, 0, n - l2);
-
-    bn *s1 = bn_add(a0, b0);
-    bn *s2 = bn_add(a1, b1);
-    bn *comb = bn_mul_rec(s1, s2, 0, s1->size, 0, s2->size);
-    bn_sub_to(comb, a0a1);
-    bn_sub_to(comb, b0b1);
-
-    bn_bit_left(comb, n);
-    bn_bit_left(a0a1, 2 * n);
-    bn *ret = bn_add(a0a1, comb);
-    bn_add_to(ret, b0b1);
-
-    bn_delete(a0);
-    bn_delete(b0);
-    bn_delete(a1);
-    bn_delete(b1);
-    bn_delete(a0a1);
-    bn_delete(b0b1);
-    bn_delete(s1);
-    bn_delete(s2);
-    bn_delete(comb);
-
-    return ret;
-}
-*/
-
-// выбираем первые н/2 битов, берем все что до них, выполняем пару умножений
-//
-/*const size_t BN_REC_SIZE_STOP =  16;
-
-int bn_mul_rec(bn *t, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
-    if (r1 - l1 <= BN_REC_SIZE_STOP || r2 - l2 <= BN_REC_SIZE_STOP) {
-
-    }
-}
-
-int bn_mul_to (bn *t, bn const *right) {
-    bn_mul_rec(t, right, 0, t->size, 0, right->size);
-    return BN_OK;
-}*/
-
-/*int bn_init_string (bn *t, const char *init_string) {
-    if (init_string == NULL) return BN_NULL_OBJECT;
-    const char *x = init_string;
-    size_t am = 0;
-    while (*x != '\0') {
-        ++am;
-        ++x;
-    }
-    resize(t, am);
-    bn *tmp = bn_new();
-//    bn_div_to_sml(tmp, 10);
-    int d = 0;
-    for (; x != init_string; --x) {
-        d = d * 10 + *x - '0';
-        if (d > bn_MXV) {
-            push_back(tmp, d);
-            d %= bn_MXV;
-        }
-    }
-    *t = *tmp;
-
-//    size_t ind = t->size - 1;
-    while (tmp->size != 0) {
-        bn_div_to_sml(tmp, 10, &t->body[t->size]);
-    }
-    if (d != 0) push_back(t, d);
-    balance(t);
-    return BN_OK;
-}*/
-
-
-// поделить на малое число
-/*int bn_div_to_sml (bn *t, int right, int* rem) {
-    int carry = 0;
-    for (size_t i = t->size; i > 0; --i) {
-        int d = t->body[i - 1] + carry * bn_MXV;
-        t->body[i - 1] = d / right;
-        carry = d % right;
-    }
-    *rem = carry;
-    return BN_OK;
-}*/
-
-/*const char *ABC = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-// A3, 16 -> 3
-//
-const char *bn_to_string (bn const *t, int radix) {
-    char *r = malloc(t->size * sizeof(char) * 5);
-    char *x = r;
-    int d = 1;
-    for (size_t i = 0; i < t->size; ++i) {
-        d = t->body[i]; // a_k*16^k+a_k-1*16*k-1+a_k-2*16^k-2+...+a_0*16^0=b_n*3^n+b_n-1*3^n-1+...+b_0*3^0
-        // a_0*16^0-a_0mod3*1 -> a_0::3 -> // 3
-        // a_k * 5 * 16^k-1 + a_k-1*5*16^k-2+...+a_0/5*16^0=b_n*3^n-1+...+b_1*3^0
-        // 1A3 -> 1*16^2 + 10*16 + 3 * 16^0 = b_0 * 3^0 +
-        // 0 1
-        while (d > radix) {
-            *(x++) = ABC[d % radix];
-            d /= radix;
-        }
-    }
-    *x = '\0';
-    return r;
-}*/
