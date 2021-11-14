@@ -57,7 +57,7 @@ void shrink (bn *t) {
 // уменьшает размер массива до необходимого
 void balance (bn *t) {
     size_t i = t->size;
-    while (i != 0 && !t->body[--i])
+    while (i > 1 && !t->body[--i])
         --t->size;
     while (t->size < t->capacity >> 2)
         shrink(t);
@@ -221,6 +221,7 @@ int bn_mul_rec_copy (bn *a, bn const *t, size_t l, size_t r) {
 }
 
 bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
+    if (!bn_cmp(left, bn_new()) || !bn_cmp(right, bn_new())) return bn_new();
     size_t n = max(r2 - l2, r1 - l1);
 
     if (n <= 1) {
@@ -281,11 +282,9 @@ bn *bn_mul (bn const *left, bn const *right) {
     return ret;
 }
 
-// TODO: add sign checking for fuck's sake
-
 int bn_cmp (bn const *left, bn const * right) {
     if (left->size != right->size)
-        return left->size < right->size ? 1 : -1;
+        return left->size < right->size ? -1 : 1;
     if (left->sign != right->sign)
         return left->sign < right->sign ? 1 : -1;
     size_t i = left->size;
@@ -293,35 +292,98 @@ int bn_cmp (bn const *left, bn const * right) {
         --i;
     }
     if (i == 0) return 0;
-    return left->sign * (left->body[i - 1] < right->body[i - 1] ? 1 : -1);
+    return left->sign * (left->body[i - 1] < right->body[i - 1] ? -1 : 1);
+}
+
+// TODO: make this function (just a copy of div_to_sml)
+
+/*bn* bn_div_sml(bn const *t, int right) {
+    bn *ret =
+}*/
+
+bn *bn_div_sml (bn const *t, int right) {
+    bn *ret = bn_new();
+    resize(ret, t->size);
+    ret->size = t->size;
+    int carry = 0;
+    for (size_t i = t->size; i > 0; --i) {
+        int d = t->body[i - 1] + carry * bn_MXV;
+        ret->body[i - 1] = d / right;
+        carry = d % right;
+    }
+    balance(ret);
+    return ret;
 }
 
 // TODO: requires checking
 
 // uses binary search for quick division
-void bn_div_ (bn *t, bn const *right, int* rem) {
-
-    bn *l = bn_new();
+void bn_div_ (bn *t, bn const *right, bn* rem) {
+    int s = t->sign * right->sign;
+    if (bn_cmp(t, right) < 0) {
+        *t = *bn_new();
+        *rem = *bn_new();
+        return;
+    }
+    bn *ret = bn_new();
+    for (size_t i = t->size; i >= right->size;) {
+        bn *tmp = bn_new();
+        resize(tmp, right->size);
+        memcpy(tmp->body, t->body + i - right->size, right->size * sizeof(int));
+        tmp->size = right->size;
+        if (bn_cmp(tmp, right) < 0)
+            push_back(tmp, t->body[i + 1]);
+        i -= tmp->size;
+        bn *mult = bn_init(right);
+        int q = 0;
+        while (bn_cmp(mult, tmp) <= 0) {
+            bn_add_to(mult, right);
+            ++q;
+        }
+        push_back(ret, q);
+        bn_delete(rem);
+        *rem = *mult;
+        bn_delete(tmp);
+        bn_delete(mult);
+    }
+    bn_delete(t);
+    *t = *ret;
+    balance(t);
+    t->sign = s;
+    /*bn *l = bn_new();
     bn *r = bn_init(t);
     bn *mul = bn_mul(l, right);
     bn *diff = bn_sub(t, mul);
     while (diff->size != 1) {
+        bn *step = bn_div_sml(bn_sub(r, l), 2);
         if (bn_cmp(mul, t) < 0) {
-            bn_add_to(l, bn_div_to_sml(bn_sub(r, l), 2));
+            bn_add_to(l, step);
         }
         else {
-            bn_sub_to(r, bn_div_to_sml(bn_sub(r, l), 2));
+            bn_sub_to(r, step);
         }
-        mul = bn_mul(l, right);
+        mul = bn_mul(step, right);
         diff = bn_sub(t, mul);
     }
     bn_delete(t);
-    t = l;
+    *t = *l;
     bn_delete(r);
     bn_delete(mul);
     *rem = diff->body[0];
-    bn_delete(diff);
+    bn_delete(diff);*/
+}
 
+int bn_div_to(bn *t, bn const *right) {
+    bn *rem = bn_new();
+    bn_div_(t, right, rem);
+    return BN_OK;
+}
+
+bn *bn_div(bn const *left, bn const *right) {
+    bn *rem = bn_new();
+    bn *ret = bn_init(left);
+    bn_div_(ret, right, rem);
+    return ret;
 }
 
 // TODO: check this func, add deleting and stuff
@@ -343,15 +405,7 @@ bn *bn_pow (bn const *t, int degree) {
     return ret;
 }
 
-// TODO: make this function (just a copy of div_to_sml)
 
-bn* bn_div_sml(bn const *t, int right) {
-    return NULL;
-}
-
-bn *bn_div_to_sml (bn const *t, int right) {
-    return NULL;
-}
 
 // TODO: check this func, add stuff
 
