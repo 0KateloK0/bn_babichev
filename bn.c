@@ -438,7 +438,7 @@ int bn_init_string_check (const char * s, size_t n) {
 }
 
 // дело было вечером, код становился с каждой минутой все хуже и хуже (умоляю не смотрите сюда)
-int bn_init_string (bn *t, const char *init_string) {
+int bn_init_string_radix(bn *t, const char *init_string, int radix) {
     bn_clear(t);
     size_t counter = 0;
     for (const char *x = init_string; *x != '\0'; ++x) {
@@ -455,23 +455,25 @@ int bn_init_string (bn *t, const char *init_string) {
         int d = 0;
         size_t i = 0;
         while (s[i] == '0') ++i;
-        for (size_t q = 0; q < 5; ++q) {
-            d = d * 10 + s[i + q] - '0';
+        size_t q = i;
+        while (d < bn_MXV) {
+            d = d * radix + s[i + q] - '0';
+            ++q;
         }
-        for (i += 5; i < counter; ++i) {
+        for (i += q; i < counter; ++i) {
             if (d > bn_MXV) {
                 int dig = d / bn_MXV;
                 do {
-                    ret[size++] = (char)(dig % 10  + '0');
-                    dig /= 10;
+                    ret[size++] = (char)(dig % radix  + '0');
+                    dig /= radix;
                 } while (dig != 0);
                 d %= bn_MXV;
             }
             else ret[size++] = '0';
-            d = d * 10 + s[i] - '0';
+            d = d * radix + s[i] - '0';
         }
         if (d > bn_MXV) {
-            ret[size++] = (char)(d / bn_MXV % 10  + '0');
+            ret[size++] = (char)(d / bn_MXV % radix  + '0');
         }
         ans[am++] = d % bn_MXV;
         counter = size;
@@ -480,7 +482,7 @@ int bn_init_string (bn *t, const char *init_string) {
     if (ret[0] != 0) {
         int d = 0;
         for (size_t i = 0; i < size; ++i)
-            d = d * 10 + ret[i] - '0';
+            d = d * radix + ret[i] - '0';
         ans[am++] = d;
     }
     resize(t, size);
@@ -491,6 +493,10 @@ int bn_init_string (bn *t, const char *init_string) {
     free(ret);
     free(ans);
     return BN_OK;
+}
+
+int bn_init_string (bn *t, const char *init_string) {
+    return bn_init_string_radix(t, init_string, 10);
 }
 
 int bn_div_sml_(bn *t, int right) {
