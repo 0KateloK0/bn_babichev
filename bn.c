@@ -11,13 +11,13 @@
 
 // TODO: decide with this value
 // максимальный размер для одной цифры bn
-const int bn_MXV = 1000000000;
+const int bn_MXV = 32768;
 
 struct bn_s {
     int *body; // тело bn_s. Каждое значение лежит в пределах [-bn_MXV;bn_MXV]
     size_t size; // кол-во цифр
     size_t capacity; // размер массива
-    short sign;
+    int sign;
 };
 
 /*// функции для поддержки размера массива
@@ -35,7 +35,7 @@ void copy (const int *orig, int *cpy, const size_t n) {
 void grow (bn *t) {
     int *cpy = calloc(t->capacity + t->capacity, sizeof(int));
 //    copy(t->body, cpy, t->size);
-    memcpy(cpy, t->body, t->size);
+    memcpy(cpy, t->body, t->size * sizeof(int));
     if (cpy == NULL) return;
     t->capacity += t->capacity;
     free(t->body);
@@ -46,7 +46,7 @@ void grow (bn *t) {
 void shrink (bn *t) {
     int *cpy = malloc((t->capacity >> 1) * sizeof(int));
 //    copy(t->body, cpy, t->capacity >> 1);
-    memcpy(cpy, t->body, t->capacity >> 1);
+    memcpy(cpy, t->body, (t->capacity >> 1) * sizeof(int));
     if (cpy == NULL) return;
     t->capacity >>= 1;
     free(t->body);
@@ -67,7 +67,7 @@ void balance (bn *t) {
 void resize (bn *t, size_t new_size) {
     balance(t);
     if (t->capacity >= new_size) return;
-    if (t->capacity < new_size) {
+    while (t->capacity < new_size) {
         grow(t);
     }
 }
@@ -116,7 +116,9 @@ void bn_clear (bn *t) {
 bn *bn_init (bn const *orig) {
     bn *ret = bn_new();
     resize(ret, orig->size);
-    memcpy(ret->body, orig->body, orig->size);
+    memcpy(ret->body, orig->body, orig->size * sizeof(int));
+    ret->sign = orig->sign;
+    ret->size = orig->size;
     return ret;
 }
 
@@ -127,7 +129,7 @@ int bn_delete (bn *t) {
 
 void concat (bn *t1, bn *t2) {
     resize(t1, t1->size + t2->size);
-    memcpy(t1->body + t1->size, t2->body, t2->size);
+    memcpy(t1->body + t1->size, t2->body, t2->size * sizeof(int));
     t1->size += t2->size;
 }
 
@@ -137,27 +139,55 @@ size_t max (size_t a, size_t b) {
 
 // TODO: also requires checking
 
+int sign (int x) {
+    if (x < 0) return -1;
+    return x == 0 ? 0 : 1;
+}
+
+int at (bn const *t, size_t ind) {
+    if (ind >= t->size) return 0;
+    return t->body[ind];
+}
+
+int bn_cmp_abs (bn const *left, bn const *right) {
+    if (left->size != right->size)
+        return left->size < right->size ? 1 : -1;
+    size_t i = left->size;
+    while (i != 0 && left->body[i - 1] == right->body[i - 1]) {
+        --i;
+    }
+    if (i == 0) return 0;
+    return left->body[i - 1] < right->body[i - 1] ? 1 : -1;
+}
+
 int bn_add_to (bn *t, bn const *right) {
+    int s = bn_cmp_abs(t, right) > 0 ? right->sign : t->sign;
     if (right->size > t->size) resize(t, right->size);
     int carry = 0;
     for (size_t i = 0; i < max(t->size, right->size); ++i) {
-        int d = t->body[i] + right->body[i] + carry;
-        t->body[i] = d % bn_MXV;
-        carry = d / bn_MXV;
+        int d = at(t, i) * t->sign +
+                at(right, i) * right->sign + carry;
+        t->body[i] = abs(d) % bn_MXV;
+        if (d != 0 && sign(d) != s) {
+            t->body[i] = bn_MXV - t->body[i];
+            carry = s;
+        }
+        else carry = 0;
     }
+    t->size = max(t->size, right->size);
     if (carry != 0) push_back(t, carry);
+    size_t i = t->size;
+    while (i > 0 && !t->body[--i]) {
+        --t->size;
+    }
+    t->sign = s;
     return BN_OK;
 }
 
 int bn_sub_to (bn *t, bn const *right) {
-    if (right->size > t->size) resize(t, right->size);
-    int carry = 0;
-    for (size_t i = 0; i < max(t->size, right->size); ++i) {
-        int d = t->body[i] - right->body[i] - carry;
-        t->body[i] = d % bn_MXV;
-        carry = (d < 0) * (d / bn_MXV + 1);
-    }
-    if (carry != 0) push_back(t, carry);
+    bn *cpy = bn_init(right);
+    cpy->sign = -cpy->sign;
+    bn_add_to(t, cpy);
     return BN_OK;
 }
 
@@ -177,7 +207,7 @@ bn* bn_sub(bn const *left, bn const *right) {
 
 int bn_mul_rec_copy (bn *a, bn const *t, size_t l, size_t r) {
     resize(a, r - l);
-    memcpy(a->body, t->body + l, r - l);
+    memcpy(a->body, t->body + l, (r - l) * sizeof(int));
 //    *a = malloc(sizeof(int) * (r - l));
 //    memcpy(*a, t->body + l, r - l);
     return BN_OK;
@@ -239,13 +269,15 @@ bn *bn_mul (bn const *left, bn const *right) {
 
 int bn_cmp (bn const *left, bn const * right) {
     if (left->size != right->size)
-        return left->size < right->size ? -1 : 1;
+        return left->size < right->size ? 1 : -1;
+    if (left->sign != right->sign)
+        return left->sign < right->sign ? 1 : -1;
     size_t i = left->size;
     while (i != 0 && left->body[i - 1] == right->body[i - 1]) {
         --i;
     }
     if (i == 0) return 0;
-    return left->body[i - 1] < right->body[i - 1] ? -1 : 1;
+    return left->sign * (left->body[i - 1] < right->body[i - 1] ? 1 : -1);
 }
 
 // TODO: requires checking
@@ -359,6 +391,24 @@ const char *bn_to_string(bn const *t, int radix) {
 
     return s;
 }
+
+void get (bn *t, int n, int sign) {
+    resize(t, n);
+    for (size_t i = 0; i < n; ++i) {
+        scanf("%d", t->body + i);
+    }
+    t->size = n;
+    t->sign = sign;
+}
+
+
+void print (bn const *t) {
+    if (t->sign == -1) printf("- ");
+    for (size_t i = 0; i < t->size; ++i) {
+        printf("%d ", t->body[i]);
+    }
+}
+
 
 // выбираем первые н/2 битов, берем все что до них, выполняем пару умножений
 //
