@@ -54,10 +54,12 @@ void shrink (bn *t) {
     t->size = t->size <= t->capacity ? t->size : t->capacity;
 }
 
-// TODO: decide whether this thing is actually useful..
 // уменьшает размер массива до необходимого
 void balance (bn *t) {
-    while (t->size + t->size < t->capacity)
+    size_t i = t->size;
+    while (i != 0 && !t->body[--i])
+        --t->size;
+    while (t->size < t->capacity >> 2)
         shrink(t);
 }
 
@@ -85,6 +87,18 @@ void push_back (bn *t, const int x) {
 void pop_back (bn *t) {
     resize(t, t->size - 1);
     --t->size;
+}
+
+void bn_bit_left (bn *t, size_t n) {
+    resize(t, t->size + n);
+    if (t->size > n) {
+        memcpy(t->body + t->size, t->body + t->size - n, n * sizeof(int));
+        memcpy(t->body + n, t->body, (t->size - n) * sizeof(int));
+    }
+    else memcpy(t->body + n, t->body, t->size * sizeof(int));
+    memset(t->body, 0, n * sizeof(int));
+    t->size += n;
+    balance(t);
 }
 
 bn *bn_new () {
@@ -137,8 +151,6 @@ size_t max (size_t a, size_t b) {
     return a > b ? a : b;
 }
 
-// TODO: also requires checking
-
 int sign (int x) {
     if (x < 0) return -1;
     return x == 0 ? 0 : 1;
@@ -170,16 +182,14 @@ int bn_add_to (bn *t, bn const *right) {
         t->body[i] = abs(d) % bn_MXV;
         if (d != 0 && sign(d) != s) {
             t->body[i] = bn_MXV - t->body[i];
-            carry = s;
+            carry = -s;
         }
+        else if (d > bn_MXV) carry = s;
         else carry = 0;
     }
     t->size = max(t->size, right->size);
     if (carry != 0) push_back(t, carry);
-    size_t i = t->size;
-    while (i > 0 && !t->body[--i]) {
-        --t->size;
-    }
+    balance(t);
     t->sign = s;
     return BN_OK;
 }
@@ -203,59 +213,65 @@ bn* bn_sub(bn const *left, bn const *right) {
     return ret;
 }
 
-//int bn_mul_sml (int *t, )
-
 int bn_mul_rec_copy (bn *a, bn const *t, size_t l, size_t r) {
     resize(a, r - l);
     memcpy(a->body, t->body + l, (r - l) * sizeof(int));
-//    *a = malloc(sizeof(int) * (r - l));
-//    memcpy(*a, t->body + l, r - l);
+    a->size = r - l;
     return BN_OK;
 }
 
-
-// TODO: requires at least one test
-// TODO: add deletion of temporary values
-int bn_mul_rec (bn *t, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
-    size_t n = max(r2 - l2, r1 - l1) / 2;
+bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
+    size_t n = max(r2 - l2, r1 - l1);
 
     if (n <= 1) {
-        t->body[l1] *= right->body[l2];
-        return BN_OK;
+        bn *ret = bn_new();
+        int d = left->body[l1] * right->body[l2];
+        ret->body[0] = d % bn_MXV;
+        if (d >= bn_MXV) push_back(ret, d / bn_MXV);
+        return ret;
     }
 
+    n >>= 1;
+
     bn *a0 = bn_new(), *a1 = bn_new(), *b0 = bn_new(), *b1 = bn_new();
-    bn_mul_rec_copy(a0, t, n + 1, r1);
-    bn_mul_rec_copy(b0, t, l1, n);
-    bn_mul_rec_copy(a1, right, n + 1, r2);
-    bn_mul_rec_copy(b1, t, l2, n);
+    bn_mul_rec_copy(a0, left, n, r1);
+    bn_mul_rec_copy(b0, left, l1, n);
+    bn_mul_rec_copy(a1, right, n, r2);
+    bn_mul_rec_copy(b1, right, l2, n);
 
-    bn *a0a1 = bn_init(a0);
-    bn_mul_rec(a0a1, a1, 0, n, l1, l1 + n);
-    bn *b0b1 = bn_init(b0);
-    bn_mul_rec(b0b1, b1, 0, n, l1, l1 + n);
+    bn *a0a1 = bn_mul_rec(a0, a1, 0, r1 - n, 0, r2 - n);
+    bn *b0b1 = bn_mul_rec(b0, b1, 0, n - l1, 0, n - l2);
 
-    bn *comb = bn_init(bn_add(a0, a1));
-    bn_mul_rec(comb, bn_add(b0, b1), 0, n, l1, l1 + n);
+    bn *s1 = bn_add(a0, b0);
+    bn *s2 = bn_add(a1, b1);
+    bn *comb = bn_mul_rec(s1, s2, 0, s1->size, 0, s2->size);
+    bn_sub_to(comb, a0a1);
+    bn_sub_to(comb, b0b1);
 
-    bn_clear(t);
+    bn_bit_left(comb, n);
+    bn_bit_left(a0a1, 2 * n);
+    bn *ret = bn_add(bn_add(a0a1, comb), b0b1);
 
-    concat(t, b0b1);
-    concat(t, bn_sub(bn_sub(comb, a0a1), a0a1));
-    concat(t, a0a1);
-    /*resize(t, n * 2);
-    memcpy(t->body, b0b1->body, b0b1->size);
-    bn *tmp = bn_sub(bn_sub(comb, a0a1), a0a1);
-    memcpy(t->body + b0b1->size, tmp->body, tmp->size);
-    memcpy(t->body + b0b1->size + tmp->size, a0a1, a0a1->size);*/
+    bn_delete(a0);
+    bn_delete(b0);
+    bn_delete(a1);
+    bn_delete(b1);
+    bn_delete(a0a1);
+    bn_delete(b0b1);
+    bn_delete(s1);
+    bn_delete(s2);
+    bn_delete(comb);
 
-    return BN_OK;
+    return ret;
 }
 
 int bn_mul_to (bn *t, bn const *right) {
     resize(t, t->size * right->size);
-    bn_mul_rec(t, right, 0, t->size, 0, right->size);
-    balance(t);
+    bn *ret = bn_mul_rec(t, right, 0, t->size, 0, right->size);
+    balance(ret);
+    ret->sign = ret->sign * right->sign;
+    bn_delete(t);
+    *t = *ret;
     return BN_OK;
 }
 
