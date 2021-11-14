@@ -233,55 +233,7 @@ bn* bn_sub(bn const *left, bn const *right) {
     return ret;
 }
 
-/*bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
-    bn *nol = bn_new();
-    if (!bn_cmp(left, nol) || !bn_cmp(right, nol)) return nol;
-    bn_delete(nol);
-    size_t n = max(r2 - l2, r1 - l1);
-    if (n <= 1) {
-        bn *ret = bn_new();
-        int d = left->body[l1] * right->body[l2];
-        ret->body[0] = d % bn_MXV;
-        if (d >= bn_MXV) push_back(ret, d / bn_MXV);
-        return ret;
-    }
 
-    n >>= 1;
-    r1 = max(n, r1); r2 = max(n, r2);
-
-    bn *a0 = bn_new(), *a1 = bn_new(), *b0 = bn_new(), *b1 = bn_new();
-    bn_mul_rec_copy(a0, left, n, max(r1, r2));
-    bn_mul_rec_copy(b0, left, l1, n);
-    bn_mul_rec_copy(a1, right, n, max(r1, r2));
-    bn_mul_rec_copy(b1, right, l2, n);
-
-    bn *a0a1 = bn_mul_rec(a0, a1, 0, r1 - n, 0, r2 - n);
-    bn *b0b1 = bn_mul_rec(b0, b1, 0, n - l1, 0, n - l2);
-
-    bn *s1 = bn_add(a0, b0);
-    bn *s2 = bn_add(a1, b1);
-    bn *comb = bn_mul_rec(s1, s2, 0, s1->size, 0, s2->size);
-    bn_sub_to(comb, a0a1);
-    bn_sub_to(comb, b0b1);
-
-    bn_bit_left(comb, n);
-    bn_bit_left(a0a1, 2 * n);
-    bn *ret = bn_add(a0a1, comb);
-    bn_add_to(ret, b0b1);
-
-    bn_delete(a0);
-    bn_delete(b0);
-    bn_delete(a1);
-    bn_delete(b1);
-    bn_delete(a0a1);
-    bn_delete(b0b1);
-    bn_delete(s1);
-    bn_delete(s2);
-    bn_delete(comb);
-
-    return ret;
-}
-*/
 
 int bn_mul_copy (bn *a, bn const *t, size_t l, size_t r) {
     resize(a, r - l);
@@ -395,27 +347,7 @@ void bn_div_ (bn *t, bn const *right, bn* rem) {
     }
     bn_copy(t, ret);
     bn_delete(ret);
-    /*bn *l = bn_new();
-    bn *r = bn_init(t);
-    bn *mul = bn_mul(l, right);
-    bn *diff = bn_sub(t, mul);
-    while (diff->size != 1) {
-        bn *step = bn_div_sml(bn_sub(r, l), 2);
-        if (bn_cmp(mul, t) < 0) {
-            bn_add_to(l, step);
-        }
-        else {
-            bn_sub_to(r, step);
-        }
-        mul = bn_mul(step, right);
-        diff = bn_sub(t, mul);
-    }
-    bn_delete(t);
-    *t = *l;
-    bn_delete(r);
-    bn_delete(mul);
-    *rem = diff->body[0];
-    bn_delete(diff);*/
+    t->sign = s;
 }
 
 int bn_div_to(bn *t, bn const *right) {
@@ -492,31 +424,141 @@ int bn_root_to (bn *t, int reciprocal) {
     return BN_OK;
 }
 
+int bn_init_string_check (const char * s, size_t n) {
+    size_t i = 0;
+    while (s[i] == '0') ++i;
+    if (n - i > 5) return 1;
+    if (n - i == 5) {
+        int d = 0;
+        for (size_t q = 0; q < 5; ++q)
+            d = d * 10 + s[q] - '0';
+        return d >= bn_MXV;
+    }
+    return 0;
+}
+
+// дело было вечером, код становился с каждой минутой все хуже и хуже (умоляю не смотрите сюда)
 int bn_init_string (bn *t, const char *init_string) {
     bn_clear(t);
     size_t counter = 0;
-    int d = 0;
     for (const char *x = init_string; *x != '\0'; ++x) {
-        d = d * 10 + *x - '0';
-        if (counter == 10) {
-            push_back(t, d);
-        }
         ++counter;
     }
+    int *ans = malloc((counter / 5 + 10) * sizeof(int));
+    size_t am = 0;
+    char * s = malloc(counter * sizeof(char));
+    memcpy(s, init_string, counter * sizeof(char));
+    char *ret; size_t size;
+    do {
+        ret = malloc((counter / 5 + 10) * sizeof(int));
+        size = 0;
+        int d = 0;
+        size_t i = 0;
+        while (s[i] == '0') ++i;
+        for (size_t q = 0; q < 5; ++q) {
+            d = d * 10 + s[i + q] - '0';
+        }
+        for (i += 5; i < counter; ++i) {
+            if (d > bn_MXV) {
+                int dig = d / bn_MXV;
+                do {
+                    ret[size++] = (char)(dig % 10  + '0');
+                    dig /= 10;
+                } while (dig != 0);
+                d %= bn_MXV;
+            }
+            else ret[size++] = '0';
+            d = d * 10 + s[i] - '0';
+        }
+        if (d > bn_MXV) {
+            ret[size++] = (char)(d / bn_MXV % 10  + '0');
+        }
+        ans[am++] = d % bn_MXV;
+        counter = size;
+        s = ret;
+    } while (bn_init_string_check(ret, size));
+    if (ret[0] != 0) {
+        int d = 0;
+        for (size_t i = 0; i < size; ++i)
+            d = d * 10 + ret[i] - '0';
+        ans[am++] = d;
+    }
+    resize(t, size);
+    for (size_t i = 0; i < am; ++i)
+        t->body[am - i - 1] = ans[i];
+    t->size = am;
+
+    free(ret);
+    free(ans);
     return BN_OK;
 }
+
+int bn_div_sml_(bn *t, int right) {
+    bn *ret = bn_new();
+    resize(ret, t->size);
+    ret->size = t->size;
+    int carry = 0;
+    for (size_t i = t->size; i > 0; --i) {
+        int d = t->body[i - 1] + carry * bn_MXV;
+        ret->body[i - 1] = d / right;
+        carry = d % right;
+    }
+    balance(ret);
+    bn_copy(t, ret);
+    bn_delete(ret);
+    return carry;
+}
+
+
+/*int bn_init_string(bn *t, const char *init_string) {
+
+    size_t init_string_size = string_size(init_string);
+    char *str_copy = malloc(init_string_size * sizeof(char));
+
+    for (size_t i = 0; i < init_string_size; ++i) {
+        if (init_string[i] != '-') {
+            str_copy[i] = init_string[i];
+        } else {
+            str_copy[i] = '0';
+        }
+    }
+
+    pop_back(t);
+    for (int i = (int)init_string_size; i > 0; i -= BASE_DIGITS) {
+
+        if (i < BASE_DIGITS) {
+            push_back(t, atoi( substr(str_copy, 0, i) ) );
+        } else {
+            push_back(t, atoi( substr(str_copy, i - BASE_DIGITS, BASE_DIGITS) ) );
+        }
+
+    }
+
+    remove_leading_zeros(t);
+    free(str_copy);
+
+    return BN_OK;
+
+}*/
 
 // TODO: create needed helper-func, and actually dafuq i made..
 
 const char *bn_to_string(bn const *t, int radix) {
-    char *s = "";
+    const char *s = "";
     bn *c = bn_init(t);
     int rem;
     while (c->size != 0) {
-//        bn_div_to_sml(c, radix, rem);
+        rem = bn_div_sml_(c, radix);
+        size_t count = 0;
         while (rem != 0) {
-            s += rem % 10 + '0';
+            s = s + (rem % 10 + '0');
             rem /= 10;
+            ++count;
+        }
+        if (count != 5) {
+            for (;count < 5; ++count) {
+                s = '0' + s;
+            }
         }
     }
 
@@ -540,6 +582,77 @@ void print (bn const *t) {
     }
 }
 
+/*bn *l = bn_new();
+    bn *r = bn_init(t);
+    bn *mul = bn_mul(l, right);
+    bn *diff = bn_sub(t, mul);
+    while (diff->size != 1) {
+        bn *step = bn_div_sml(bn_sub(r, l), 2);
+        if (bn_cmp(mul, t) < 0) {
+            bn_add_to(l, step);
+        }
+        else {
+            bn_sub_to(r, step);
+        }
+        mul = bn_mul(step, right);
+        diff = bn_sub(t, mul);
+    }
+    bn_delete(t);
+    *t = *l;
+    bn_delete(r);
+    bn_delete(mul);
+    *rem = diff->body[0];
+    bn_delete(diff);*/
+
+/*bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
+    bn *nol = bn_new();
+    if (!bn_cmp(left, nol) || !bn_cmp(right, nol)) return nol;
+    bn_delete(nol);
+    size_t n = max(r2 - l2, r1 - l1);
+    if (n <= 1) {
+        bn *ret = bn_new();
+        int d = left->body[l1] * right->body[l2];
+        ret->body[0] = d % bn_MXV;
+        if (d >= bn_MXV) push_back(ret, d / bn_MXV);
+        return ret;
+    }
+
+    n >>= 1;
+    r1 = max(n, r1); r2 = max(n, r2);
+
+    bn *a0 = bn_new(), *a1 = bn_new(), *b0 = bn_new(), *b1 = bn_new();
+    bn_mul_rec_copy(a0, left, n, max(r1, r2));
+    bn_mul_rec_copy(b0, left, l1, n);
+    bn_mul_rec_copy(a1, right, n, max(r1, r2));
+    bn_mul_rec_copy(b1, right, l2, n);
+
+    bn *a0a1 = bn_mul_rec(a0, a1, 0, r1 - n, 0, r2 - n);
+    bn *b0b1 = bn_mul_rec(b0, b1, 0, n - l1, 0, n - l2);
+
+    bn *s1 = bn_add(a0, b0);
+    bn *s2 = bn_add(a1, b1);
+    bn *comb = bn_mul_rec(s1, s2, 0, s1->size, 0, s2->size);
+    bn_sub_to(comb, a0a1);
+    bn_sub_to(comb, b0b1);
+
+    bn_bit_left(comb, n);
+    bn_bit_left(a0a1, 2 * n);
+    bn *ret = bn_add(a0a1, comb);
+    bn_add_to(ret, b0b1);
+
+    bn_delete(a0);
+    bn_delete(b0);
+    bn_delete(a1);
+    bn_delete(b1);
+    bn_delete(a0a1);
+    bn_delete(b0b1);
+    bn_delete(s1);
+    bn_delete(s2);
+    bn_delete(comb);
+
+    return ret;
+}
+*/
 
 // выбираем первые н/2 битов, берем все что до них, выполняем пару умножений
 //
