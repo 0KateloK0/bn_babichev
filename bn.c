@@ -35,7 +35,7 @@ void copy (const int *orig, int *cpy, const size_t n) {
 void grow (bn *t) {
     int *cpy = calloc(t->capacity + t->capacity, sizeof(int));
 //    copy(t->body, cpy, t->size);
-    memcpy(cpy, t->body, t->size * sizeof(int));
+    memcpy(cpy, t->body, t-> size * sizeof(int));
     if (cpy == NULL) return;
     t->capacity += t->capacity;
     free(t->body);
@@ -146,6 +146,14 @@ bn *bn_init (bn const *orig) {
     return ret;
 }
 
+int bn_init_int(bn *t, int init_int) {
+    while (init_int) {
+        push_back(t, init_int % bn_MXV);
+        init_int /= bn_MXV;
+    }
+    return BN_OK;
+}
+
 int bn_delete (bn *t) {
     free(t->body);
     free(t);
@@ -225,19 +233,11 @@ bn* bn_sub(bn const *left, bn const *right) {
     return ret;
 }
 
-int bn_mul_rec_copy (bn *a, bn const *t, size_t l, size_t r) {
-    resize(a, r - l);
-    memcpy(a->body, t->body + l, (r - l) * sizeof(int));
-    a->size = r - l;
-    return BN_OK;
-}
-
-bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
+/*bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2, size_t r2) {
     bn *nol = bn_new();
     if (!bn_cmp(left, nol) || !bn_cmp(right, nol)) return nol;
     bn_delete(nol);
     size_t n = max(r2 - l2, r1 - l1);
-
     if (n <= 1) {
         bn *ret = bn_new();
         int d = left->body[l1] * right->body[l2];
@@ -247,11 +247,12 @@ bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2
     }
 
     n >>= 1;
+    r1 = max(n, r1); r2 = max(n, r2);
 
     bn *a0 = bn_new(), *a1 = bn_new(), *b0 = bn_new(), *b1 = bn_new();
-    bn_mul_rec_copy(a0, left, n, r1);
+    bn_mul_rec_copy(a0, left, n, max(r1, r2));
     bn_mul_rec_copy(b0, left, l1, n);
-    bn_mul_rec_copy(a1, right, n, r2);
+    bn_mul_rec_copy(a1, right, n, max(r1, r2));
     bn_mul_rec_copy(b1, right, l2, n);
 
     bn *a0a1 = bn_mul_rec(a0, a1, 0, r1 - n, 0, r2 - n);
@@ -280,13 +281,45 @@ bn *bn_mul_rec (bn const *left, bn const *right, size_t l1, size_t r1, size_t l2
 
     return ret;
 }
+*/
+
+int bn_mul_copy (bn *a, bn const *t, size_t l, size_t r) {
+    resize(a, r - l);
+    if (t->size >= r) {
+        memcpy(a->body, t->body + l, (r - l) * sizeof(int));
+        a->size = r - l;
+    }
+    return BN_OK;
+}
+
+bn *bn_mul_sml (bn const *t, int right) {
+    bn *ret = bn_new();
+    int carry = 0;
+    for (size_t i = 0; i < t->size; ++i) {
+        int d = t->body[i] * right + carry;
+        push_back(ret, d % bn_MXV);
+        carry = d / bn_MXV;
+    }
+    if (carry) push_back(ret, carry);
+    return ret;
+}
 
 int bn_mul_to (bn *t, bn const *right) {
+    bn *ret = bn_new();
     resize(t, t->size * right->size);
-    bn *ret = bn_mul_rec(t, right, 0, t->size, 0, right->size);
+    for (size_t i = 0; i < t->size; ++i) {
+        bn *tmp = bn_mul_sml(right, t->body[i]);
+        bn_bit_left(tmp, i);
+        bn_add_to(ret, tmp);
+        bn_delete(tmp);
+    }
     bn_copy(t, ret);
-    t->sign = t->sign * right->sign;
     bn_delete(ret);
+    balance(t);
+//    bn *ret = bn_mul_rec(t, right, 0, t->size, 0, right->size);
+//    bn_copy(t, ret);
+//    t->sign = t->sign * right->sign;
+//    bn_delete(ret);
     return BN_OK;
 }
 
@@ -295,6 +328,7 @@ bn *bn_mul (bn const *left, bn const *right) {
     bn_mul_to(ret, right);
     return ret;
 }
+
 
 int bn_cmp (bn const *left, bn const * right) {
     if (left->size != right->size)
@@ -403,12 +437,20 @@ bn *bn_div(bn const *left, bn const *right) {
 
 int bn_pow_to (bn *t, int degree) {
     bn *tmp = bn_init(t);
-    while (degree != 0) {
-        if (degree % 2 == 1)
-            bn_mul_to(t, tmp);
-        bn_mul_to(tmp, tmp);
+    bn *ret = bn_new();
+    bn_init_int(ret, 1);
+    while (degree) {
+        if (degree & 1) {
+            bn_mul_to(ret, tmp);
+        }
+        bn *cpy = bn_init(tmp);
+        bn_mul_to(tmp, cpy);
+        bn_delete(cpy);
         degree >>= 1;
     }
+    bn_copy(t, ret);
+    bn_delete(tmp);
+    bn_delete(ret);
     return BN_OK;
 }
 
