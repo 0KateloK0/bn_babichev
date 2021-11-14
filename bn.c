@@ -120,6 +120,11 @@ bn *bn_init (bn const *orig) {
     return ret;
 }
 
+int bn_delete (bn *t) {
+    free(t->body);
+    return BN_OK;
+}
+
 void concat (bn *t1, bn *t2) {
     resize(t1, t1->size + t2->size);
     memcpy(t1->body + t1->size, t2->body, t2->size);
@@ -159,6 +164,12 @@ int bn_sub_to (bn *t, bn const *right) {
 bn* bn_add(bn const *left, bn const *right) {
     bn* ret = bn_init(left);
     bn_add_to(ret, right);
+    return ret;
+}
+
+bn* bn_sub(bn const *left, bn const *right) {
+    bn* ret = bn_init(left);
+    bn_sub_to(ret, right);
     return ret;
 }
 
@@ -218,6 +229,24 @@ int bn_mul_to (bn *t, bn const *right) {
     return BN_OK;
 }
 
+bn *bn_mul (bn const *left, bn const *right) {
+    bn* ret = bn_init(left);
+    bn_mul_to(ret, right);
+    return ret;
+}
+
+// TODO: add sign checking for fuck's sake
+
+int bn_cmp (bn const *left, bn const * right) {
+    if (left->size != right->size)
+        return left->size < right->size ? -1 : 1;
+    size_t i = left->size;
+    while (i != 0 && left->body[i - 1] == right->body[i - 1]) {
+        --i;
+    }
+    if (i == 0) return 0;
+    return left->body[i - 1] < right->body[i - 1] ? -1 : 1;
+}
 
 // TODO: requires checking
 
@@ -272,6 +301,10 @@ bn* bn_div_sml(bn const *t, int right) {
     return NULL;
 }
 
+bn *bn_div_to_sml (bn const *t, int right) {
+    return NULL;
+}
+
 // TODO: check this func, add stuff
 
 int bn_root_to (bn *t, int reciprocal) {
@@ -317,7 +350,7 @@ const char *bn_to_string(bn const *t, int radix) {
     bn *c = bn_init(t);
     int rem;
     while (c->size != 0) {
-        bn_div_to_sml(c, radix, rem);
+//        bn_div_to_sml(c, radix, rem);
         while (rem != 0) {
             s += rem % 10 + '0';
             rem /= 10;
