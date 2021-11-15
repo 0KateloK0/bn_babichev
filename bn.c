@@ -59,7 +59,7 @@ struct bn_s {
 
 // увеличивает размер массива в 2 раза с копированием элементов
 void grow (bn *t) {
-    int *cpy = calloc(t->capacity + t->capacity, sizeof(int));
+    int *cpy = (int *)calloc(t->capacity + t->capacity, sizeof(int));
 //    copy(t->body, cpy, t->size);
     memcpy(cpy, t->body, t-> size * sizeof(int));
     if (cpy == NULL) return;
@@ -70,7 +70,7 @@ void grow (bn *t) {
 
 // уменьшает размер массива в 2 раза с копированием эл-ов
 void shrink (bn *t) {
-    int *cpy = malloc((t->capacity >> 1) * sizeof(int));
+    int *cpy = (int *)calloc((t->capacity >> 1), sizeof(int));
 //    copy(t->body, cpy, t->capacity >> 1);
     memcpy(cpy, t->body, (t->capacity >> 1) * sizeof(int));
     if (cpy == NULL) return;
@@ -109,7 +109,7 @@ void push_back (bn *t, const int x) {
 
 void bn_copy (bn *t, bn const *right) {
     free(t->body);
-    t->body = calloc(right->capacity, sizeof(int));
+    t->body = (int *)calloc(right->capacity, sizeof(int));
     memcpy(t->body, right->body, right->size * sizeof(int));
     t->size = right->size;
     t->capacity = right->capacity;
@@ -130,12 +130,12 @@ void bn_bit_left (bn *t, size_t n) {
 }
 
 bn *bn_new () {
-    struct bn_s *r = malloc(sizeof(struct bn_s));
+    struct bn_s *r = (struct bn_s *)malloc(sizeof(struct bn_s));
 
     if (r == NULL) return NULL;
 
     r->capacity = 1;
-    r->body = malloc(r->capacity * sizeof(int));
+    r->body = (int *)malloc(r->capacity * sizeof(int));
     if (r->body == NULL) {
         r = NULL;
         return NULL;
@@ -152,7 +152,7 @@ void bn_clear (bn *t) {
     free(t->body);
     t->size = 0;
     t->capacity = 1;
-    t->body = calloc(t->capacity, sizeof(int));
+    t->body = (int *)calloc(t->capacity, sizeof(int));
 }
 
 bn *bn_init (bn const *orig) {
@@ -325,12 +325,14 @@ int bn_div_ (bn *t, bn const *right, bn* rem) {
         return BN_DIVIDE_BY_ZERO;
     int s = t->sign * right->sign;
     if (bn_cmp(t, right) < 0) {
-        *t = *bn_new();
-        *rem = *bn_new();
+        bn *nul = bn_new();
+        bn_copy(t, nul);
+        bn_copy(rem, nul);
+        bn_delete(nul);
         return BN_OK;
     }
     bn *ret = bn_new();
-    for (size_t i = t->size; i >= right->size;) {
+    for (size_t i = t->size; i >= right->size; ) {
         bn *tmp = bn_new();
         resize(tmp, right->size);
         memcpy(tmp->body, t->body + i - right->size, right->size * sizeof(int));
@@ -423,17 +425,14 @@ int bn_root_to (bn *t, int reciprocal) {
     return BN_OK;
 }
 
-int bn_init_string_check (const char * s, size_t n) {
+int bn_init_string_check (const char * s, size_t n, int radix) {
     size_t i = 0;
-    while (s[i] == '0') ++i;
+    while (i < n && s[i] == '0') ++i;
     if (n - i > 5) return 1;
-    if (n - i == 5) {
-        int d = 0;
-        for (size_t q = 0; q < 5; ++q)
-            d = d * 10 + s[q] - '0';
-        return d >= bn_MXV;
-    }
-    return 0;
+    int d = 0;
+    for (; i < n; ++i)
+        d = d * radix + s[i] - '0';
+    return d >= bn_MXV;
 }
 
 const char * ABC = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -454,24 +453,22 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
     for (const char *x = init_string; *x != '\0'; ++x) {
         ++counter;
     }
-    int *ans = malloc(counter * sizeof(int) * 20);
+    int *ans = (int *)malloc(counter * sizeof(int));
     size_t am = 0;
-    char * s = malloc((counter + 10) * sizeof(char) * 20);
-    memcpy(s, init_string, (counter + 10) * sizeof(char) * 20);
-    char *ret; size_t size;
+    char * s = (char *)malloc(counter * sizeof(char));
+    memcpy(s, init_string, counter * sizeof(char));
+    char *ret = NULL; size_t size = 0;
     do {
-        ret = malloc((counter + 10) * sizeof(int) * 20);
+        ret = (char *)malloc(counter * sizeof(char));
         size = 0;
-        int d = 0;
         size_t i = 0;
         while (s[i] == '0') ++i;
-        size_t q = i;
-        while (d < bn_MXV && s[i + q] != '\0') {
-            d = d * radix + convert(s[i + q]);
-            ++q;
+        int d = 0;
+        while (d < bn_MXV && i < counter) {
+            d = d * radix + convert(s[i++]);
         }
-        for (i += q; i < counter; ++i) {
-            if (d > bn_MXV) {
+        for (; i < counter; ++i) {
+            if (d >= bn_MXV) {
                 int dig = d / bn_MXV;
                 do {
                     ret[size++] = ABC[dig % radix];
@@ -482,22 +479,28 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
             else ret[size++] = '0';
             d = d * radix + convert(s[i]);
         }
-        if (d > bn_MXV) {
-            ret[size++] = ABC[d / bn_MXV % radix];
-        }
+        if (d >= bn_MXV) {
+            int dig = d / bn_MXV;
+            do {
+                ret[size++] = ABC[dig % radix];
+                dig /= radix;
+            } while (dig != 0);
+        } else ret[size++] = '0';
         ans[am++] = d % bn_MXV;
         counter = size;
+        free(s);
         s = ret;
-    } while (bn_init_string_check(ret, size));
-    if (ret[0] != 0) {
+    } while (bn_init_string_check(ret, size, radix));
+    if (ret[0] != '0') {
         int d = 0;
         for (size_t i = 0; i < size; ++i)
             d = d * radix + convert(ret[i]);
         ans[am++] = d;
     }
-    resize(t, size);
-    for (size_t i = 0; i < am; ++i)
-        t->body[i] = ans[i];
+    resize(t, am);
+    memcpy(t->body, ans, sizeof(int) * am);
+//    for (size_t i = 0; i < am; ++i)
+//        t->body[i] = ans[i];
     t->size = am;
 
     free(ret);
@@ -540,29 +543,31 @@ int bn_div_sml_(bn *t, int right) {
 }
 
 const char *bn_to_string(bn const *t, int radix) {
+    if (t->size == 1 && t->body[0] == 0) return "0";
     bn *base = bn_new();
     bn_init_int(base, radix);
-    char *s = malloc(t->size * radix);
-    char *ss = malloc(t->size * radix);
+    char *s = (char *)malloc(t->size * radix * sizeof(char));
+    char *ss = (char *)malloc(t->size * radix * sizeof(char));
     size_t ind = 0;
     bn *c = bn_init(t);
     int rem;
     while (c->size != 1) {
         rem = bn_div_sml_(c, radix);
         s[ind++] = ABC[rem % radix];
-        rem /= radix;
     }
     while (c->body[0] != 0) {
         s[ind++] = ABC[c->body[0] % radix];
         c->body[0] /= radix;
     }
-    while (s[ind - 1] == '0')
+    while (ind > 1 && s[ind - 1] == '0')
         --ind;
-//    s[ind] = '\0';
-
+    if (t->sign == -1)
+        s[ind++] = '-';
     for (size_t i = 0; i < ind; ++i) {
         ss[ind - i - 1] = s[i];
     }
+    bn_delete(base);
+    bn_delete(c);
     free(s);
     ss[ind] = '\0';
     return ss;
