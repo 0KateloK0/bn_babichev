@@ -1,12 +1,9 @@
 // файл bn_katelkin.c
 
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
-//#include "bn.h"
-//#pragma once
 #pragma once
-// Файл bn.h
+
 struct bn_s;
 typedef struct bn_s bn;
 enum bn_codes {
@@ -47,9 +44,10 @@ int bn_cmp(bn const *left, bn const *right);
 int bn_neg(bn *t); // Изменить знак на противоположный
 int bn_abs(bn *t); // Взять модуль
 int bn_sign(bn const *t); //-1 если t<0; 0 если t = 0, 1 если t>0
+
+
 // максимальный размер для одной цифры bn
 const int bn_MXV = 32768;
-
 struct bn_s {
     int *body; // тело bn_s. Каждое значение лежит в пределах [-bn_MXV;bn_MXV]
     size_t size; // кол-во цифр
@@ -156,6 +154,7 @@ void bn_clear (bn *t) {
 }
 
 bn *bn_init (bn const *orig) {
+    if (orig == NULL) return NULL;
     bn *ret = bn_new();
     resize(ret, orig->size);
     memcpy(ret->body, orig->body, orig->size * sizeof(int));
@@ -165,6 +164,7 @@ bn *bn_init (bn const *orig) {
 }
 
 int bn_init_int(bn *t, int init_int) {
+    if (t == NULL) return BN_NULL_OBJECT;
     while (init_int) {
         push_back(t, init_int % bn_MXV);
         init_int /= bn_MXV;
@@ -173,16 +173,11 @@ int bn_init_int(bn *t, int init_int) {
 }
 
 int bn_delete (bn *t) {
+    if (t == NULL) return BN_NULL_OBJECT;
     free(t->body);
     free(t);
     return BN_OK;
 }
-
-/*void concat (bn *t1, bn *t2) {
-    resize(t1, t1->size + t2->size);
-    memcpy(t1->body + t1->size, t2->body, t2->size * sizeof(int));
-    t1->size += t2->size;
-}*/
 
 size_t max (size_t a, size_t b) {
     return a > b ? a : b;
@@ -200,17 +195,18 @@ int at (bn const *t, size_t ind) {
 
 int bn_cmp_abs (bn const *left, bn const *right) {
     if (left->size != right->size)
-        return left->size < right->size ? 1 : -1;
+        return left->size < right->size ? -1 : 1;
     size_t i = left->size;
     while (i != 0 && left->body[i - 1] == right->body[i - 1]) {
         --i;
     }
     if (i == 0) return 0;
-    return left->body[i - 1] < right->body[i - 1] ? 1 : -1;
+    return left->body[i - 1] < right->body[i - 1] ? -1 : 1;
 }
 
 int bn_add_to (bn *t, bn const *right) {
-    int s = bn_cmp_abs(t, right) > 0 ? right->sign : t->sign;
+    if (t == NULL || right == NULL) return BN_NULL_OBJECT;
+    int s = bn_cmp_abs(t, right) > 0 ? t->sign : right->sign;
     if (right->size > t->size) resize(t, right->size);
     int carry = 0;
     for (size_t i = 0; i < max(t->size, right->size); ++i) {
@@ -232,8 +228,9 @@ int bn_add_to (bn *t, bn const *right) {
 }
 
 int bn_sub_to (bn *t, bn const *right) {
+    if (t == NULL || right == NULL) return BN_NULL_OBJECT;
     bn *cpy = bn_init(right);
-    cpy->sign = -cpy->sign;
+    bn_neg(cpy);
     bn_add_to(t, cpy);
     bn_delete(cpy);
     return BN_OK;
@@ -241,26 +238,24 @@ int bn_sub_to (bn *t, bn const *right) {
 
 bn* bn_add(bn const *left, bn const *right) {
     bn* ret = bn_init(left);
-    bn_add_to(ret, right);
+    if (bn_add_to(ret, right) != BN_OK) {
+        bn_delete(ret);
+        return NULL;
+    }
     return ret;
 }
 
 bn* bn_sub(bn const *left, bn const *right) {
     bn* ret = bn_init(left);
-    bn_sub_to(ret, right);
+    if (bn_sub_to(ret, right) != BN_OK) {
+        bn_delete(ret);
+        return NULL;
+    }
     return ret;
 }
 
-/*int bn_mul_copy (bn *a, bn const *t, size_t l, size_t r) {
-    resize(a, r - l);
-    if (t->size >= r) {
-        memcpy(a->body, t->body + l, (r - l) * sizeof(int));
-        a->size = r - l;
-    }
-    return BN_OK;
-}*/
-
 bn *bn_mul_sml (bn const *t, int right) {
+    if (t == NULL) return NULL;
     bn *ret = bn_new();
     int carry = 0;
     for (size_t i = 0; i < t->size; ++i) {
@@ -273,6 +268,7 @@ bn *bn_mul_sml (bn const *t, int right) {
 }
 
 int bn_mul_to (bn *t, bn const *right) {
+    int s = t->sign * right->sign;
     bn *ret = bn_new();
     resize(t, t->size * right->size);
     for (size_t i = 0; i < t->size; ++i) {
@@ -284,6 +280,7 @@ int bn_mul_to (bn *t, bn const *right) {
     bn_copy(t, ret);
     bn_delete(ret);
     balance(t);
+    t->sign = s;
     return BN_OK;
 }
 
@@ -294,16 +291,9 @@ bn *bn_mul (bn const *left, bn const *right) {
 }
 
 int bn_cmp (bn const *left, bn const * right) {
-    if (left->size != right->size)
-        return left->size < right->size ? -1 : 1;
     if (left->sign != right->sign)
-        return left->sign < right->sign ? 1 : -1;
-    size_t i = left->size;
-    while (i != 0 && left->body[i - 1] == right->body[i - 1]) {
-        --i;
-    }
-    if (i == 0) return 0;
-    return left->sign * (left->body[i - 1] < right->body[i - 1] ? -1 : 1);
+        return left->sign < right->sign ? -1 : 1;
+    return left->sign * bn_cmp_abs(left, right);
 }
 
 bn *bn_div_sml (bn const *t, int right) {
@@ -324,10 +314,10 @@ int bn_div_ (bn *t, bn const *right, bn* rem) {
     if (right->size == 1 && right->body[0] == 0)
         return BN_DIVIDE_BY_ZERO;
     int s = t->sign * right->sign;
-    if (bn_cmp(t, right) < 0) {
+    if (bn_cmp_abs(t, right) < 0) {
         bn *nul = bn_new();
         bn_copy(t, nul);
-        bn_copy(rem, nul);
+        bn_copy(rem, right);
         bn_delete(nul);
         return BN_OK;
     }
@@ -337,20 +327,32 @@ int bn_div_ (bn *t, bn const *right, bn* rem) {
         resize(tmp, right->size);
         memcpy(tmp->body, t->body + i - right->size, right->size * sizeof(int));
         tmp->size = right->size;
-        if (bn_cmp(tmp, right) < 0)
+        if (bn_cmp_abs(tmp, right) < 0)
             push_back(tmp, t->body[i + 1]);
         i -= tmp->size;
         bn *mult = bn_init(right);
-        int q = 0;
-        while (bn_cmp(mult, tmp) <= 0) {
+        int q = 1;
+        while (bn_cmp_abs(mult, tmp) < 0) {
             bn_add_to(mult, right);
             ++q;
         }
         push_back(ret, q);
-        bn_copy(rem, mult);
+        bn *sub = bn_sub(tmp, mult);
+        bn_copy(rem, sub);
         bn_delete(tmp);
         bn_delete(mult);
+        bn_delete(sub);
     }
+    if (s == -1 || !bn_cmp_abs(rem, right)) {
+        bn *r_cpy = bn_init(right);
+        bn_abs(r_cpy);
+//        bn_abs(rem);
+        bn *sub = bn_sub(r_cpy, rem);
+        bn_copy(rem, sub);
+        bn_delete(sub);
+        bn_delete(r_cpy);
+    }
+    rem->sign = right->sign;
     bn_copy(t, ret);
     bn_delete(ret);
     t->sign = s;
@@ -359,9 +361,10 @@ int bn_div_ (bn *t, bn const *right, bn* rem) {
 
 int bn_div_to(bn *t, bn const *right) {
     bn *rem = bn_new();
-    bn_div_(t, right, rem);
+    if (t == NULL || right == NULL) return BN_NULL_OBJECT;
+    int code = bn_div_(t, right, rem);
     bn_delete(rem);
-    return BN_OK;
+    return code;
 }
 
 bn *bn_div(bn const *left, bn const *right) {
@@ -373,6 +376,7 @@ bn *bn_div(bn const *left, bn const *right) {
 }
 
 int bn_pow_to (bn *t, int degree) {
+    if (t == NULL) return BN_NULL_OBJECT;
     bn *tmp = bn_init(t);
     bn *ret = bn_new();
     bn_init_int(ret, 1);
@@ -393,11 +397,15 @@ int bn_pow_to (bn *t, int degree) {
 
 bn *bn_pow (bn const *t, int degree) {
     bn *ret = bn_init(t);
-    bn_pow_to(ret, degree);
+    if (bn_pow_to(ret, degree) != BN_OK) {
+        bn_delete(ret);
+        return NULL;
+    }
     return ret;
 }
 
 int bn_root_to (bn *t, int reciprocal) {
+    if (t == NULL) return BN_NULL_OBJECT;
     bn *l = bn_new();
     bn *r = bn_init(t);
     bn *diff = bn_sub(r, l);
@@ -406,7 +414,7 @@ int bn_root_to (bn *t, int reciprocal) {
         bn *mid = bn_div_sml(tmp, 2);
         bn_delete(tmp);
         bn *pow = bn_pow(mid, reciprocal);
-        if (bn_cmp(pow, t) < 0) {
+        if (bn_cmp_abs(pow, t) < 0) {
             bn_copy(l, mid);
         }
         else {
@@ -444,6 +452,7 @@ int convert (char x) {
 
 // дело было вечером, код становился с каждой минутой все хуже и хуже (умоляю не смотрите сюда)
 int bn_init_string_radix(bn *t, const char *init_string, int radix) {
+    if (t == NULL) return BN_NULL_OBJECT;
     bn_clear(t);
     if (init_string[0] == '-') {
         t->sign = -1;
@@ -457,7 +466,7 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
     size_t am = 0;
     char * s = (char *)malloc(counter * sizeof(char));
     memcpy(s, init_string, counter * sizeof(char));
-    char *ret = NULL; size_t size = 0;
+    char *ret = NULL; size_t size;
     do {
         ret = (char *)malloc(counter * sizeof(char));
         size = 0;
@@ -512,20 +521,6 @@ int bn_init_string (bn *t, const char *init_string) {
     return bn_init_string_radix(t, init_string, 10);
 }
 
-/*bn *bn_div_sml (bn const *t, int right) {
-    bn *ret = bn_new();
-    resize(ret, t->size);
-    ret->size = t->size;
-    int carry = 0;
-    for (size_t i = t->size; i > 0; --i) {
-        int d = t->body[i - 1] + carry * bn_MXV;
-        ret->body[i - 1] = d / right;
-        carry = d % right;
-    }
-    balance(ret);
-    return ret;
-}*/
-
 int bn_div_sml_(bn *t, int right) {
     bn *ret = bn_new();
     resize(ret, t->size);
@@ -546,23 +541,33 @@ const char *bn_to_string(bn const *t, int radix) {
     if (t->size == 1 && t->body[0] == 0) return "0";
     bn *base = bn_new();
     bn_init_int(base, radix);
-    char *s = (char *)malloc(t->size * radix * sizeof(char));
-    char *ss = (char *)malloc(t->size * radix * sizeof(char));
+    size_t s_size = 7 * t->size * radix;
+    char *s = (char *)malloc(s_size * sizeof(char));
     size_t ind = 0;
     bn *c = bn_init(t);
     int rem;
     while (c->size != 1) {
         rem = bn_div_sml_(c, radix);
         s[ind++] = ABC[rem % radix];
+        if (ind >= s_size) {
+            char *cpy = (char *) malloc(2 * s_size * sizeof(char));
+            memcpy(cpy, s, s_size * sizeof(char));
+            s_size <<= 1;
+            free(s);
+            s = cpy;
+        }
     }
     while (c->body[0] != 0) {
         s[ind++] = ABC[c->body[0] % radix];
         c->body[0] /= radix;
     }
-    while (ind > 1 && s[ind - 1] == '0')
+    while (ind > 1 && s[ind - 1] == '0') {
         --ind;
-    if (t->sign == -1)
+    }
+    if (t->sign == -1) {
         s[ind++] = '-';
+    }
+    char *ss = (char *)malloc((ind + 1) * sizeof(char));
     for (size_t i = 0; i < ind; ++i) {
         ss[ind - i - 1] = s[i];
     }
@@ -575,9 +580,10 @@ const char *bn_to_string(bn const *t, int radix) {
 
 int bn_mod_to (bn *t, bn const *right) {
     bn *rem = bn_new();
-    bn_div_(t, right, rem);
+    int code = bn_div_(t, right, rem);
     bn_copy(t, rem);
-    return BN_OK;
+    bn_delete(rem);
+    return code;
 }
 
 bn* bn_mod (bn const *left, bn const *right) {
@@ -599,7 +605,8 @@ int bn_abs(bn *t) {
 int bn_sign (bn const *t) {
     return t->sign;
 }
-void get (bn *t, int n, int sign) {
+
+/*void get (bn *t, int n, int sign) {
     resize(t, n);
     for (size_t i = 0; i < n; ++i) {
         scanf("%d", t->body + i);
@@ -614,4 +621,4 @@ void print (bn const *t) {
     for (size_t i = 0; i < t->size; ++i) {
         printf("%d ", t->body[i]);
     }
-}
+}*/
