@@ -40,3 +40,9 @@ int bn_cmp(bn const *left, bn const *right);
 int bn_neg(bn *t); // Изменить знак на противоположный
 int bn_abs(bn *t); // Взять модуль
 int bn_sign(bn const *t); //-1 если t<0; 0 если t = 0, 1 если t>0
+
+
+// для тестирования, удалить потом
+//bn* bn_div_to_sml(bn const *t, int right);
+void get (bn *t, int n, int sign);
+void print (bn const *t);

@@ -57,3 +57,5 @@ scratch*.c
 .idea/
 *.swp
 cmake-build-debug/
+/lesha.c
+/t

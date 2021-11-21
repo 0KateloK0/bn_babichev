@@ -46,7 +46,7 @@ int bn_sign(bn const *t); //-1 если t<0; 0 если t = 0, 1 если t>0
 
 
 // максимальный размер для одной цифры bn
-const int bn_MXV = 1073741824;
+const long long bn_MXV = 1073741824;
 const int bn_LENGTH = 10;
 struct bn_s {
     int *body; // тело bn_s. Каждое значение лежит в пределах [-bn_MXV;bn_MXV]
@@ -106,8 +106,10 @@ void push_back (bn *t, const int x) {
 }
 
 void bn_copy (bn *t, bn const *right) {
-    free(t->body);
-    t->body = (int *)calloc(right->capacity, sizeof(int));
+    if (t->capacity != right->capacity) {
+        free(t->body);
+        t->body = (int *)calloc(right->capacity, sizeof(int));
+    }
     memcpy(t->body, right->body, right->size * sizeof(int));
     t->size = right->size;
     t->capacity = right->capacity;
@@ -115,8 +117,9 @@ void bn_copy (bn *t, bn const *right) {
     balance(t);
 }
 
-void bn_bit_left (bn *t, size_t n) {
+void bn_bit_left (bn *t, int n) {
 //    if (n == 0) return;
+    if (n <= 0) return;
     resize(t, t->size + n);
     if (t->size > n) {
         int *cpy = (int *)malloc((t->size + n) * sizeof(int));
@@ -177,8 +180,8 @@ int bn_init_int(bn *t, int init_int) {
     if (init_int < 0)
         t->sign = -1;
     do {
-        push_back(t, init_int % bn_MXV);
-        init_int /= bn_MXV;
+        push_back(t, init_int % (int)bn_MXV);
+        init_int /= (int)bn_MXV;
     } while (init_int);
     return BN_OK;
 }
@@ -224,12 +227,12 @@ int bn_add_to (bn *t, bn const *right) {
     for (size_t i = 0; i < max(t->size, right->size); ++i) {
         long long d = (long long) at(t, i) * t->sign +
                 (long long) at(right, i) * right->sign + (long long)carry;
-        t->body[i] = (int)(llabs(d) % (long long)bn_MXV);
+        t->body[i] = (int)(llabs(d) % bn_MXV);
         if (d != 0 && sign(d) != s) {
-            t->body[i] = bn_MXV - t->body[i];
+            t->body[i] = (int)bn_MXV - t->body[i];
             carry = (long long)-s;
         }
-        else if (llabs(d) >= (long long)bn_MXV) carry = (long long)s;
+        else if (llabs(d) >= bn_MXV) carry = (long long)s;
         else carry = 0ll;
     }
     t->size = max(t->size, right->size);
@@ -272,20 +275,25 @@ bn *bn_mul_sml (bn const *t, int right) {
     }
     if (t == NULL) return NULL;
     bn *ret = bn_new();
+    resize(ret, t->size);
+//    ret->size = 0;
     long long carry = 0;
-    size_t zeros = 0;
+    int zeros = 0;
     int ok = 1;
     for (size_t i = 0; i < t->size; ++i) {
         long long d = (long long) (t->body[i] * (long long) right) + (long long) carry;
-        if (ok && d % (long long)bn_MXV == 0) {
+        if (ok && d % bn_MXV == 0) {
             ++zeros;
         }
         else {
-            push_back(ret, (int)(d % (long long)bn_MXV));
+            ret->body[i - zeros] = (int)(d % bn_MXV);
+//            push_back(ret, (int)(d % (long long)bn_MXV));
             ok = 0;
         }
-        carry = d / (long long)bn_MXV;
+        carry = d / bn_MXV;
     }
+    ret->size = t->size - zeros;
+//    balance(ret);
     if (carry) push_back(ret, (int)carry);
     bn_bit_left(ret, zeros);
     return ret;
@@ -297,12 +305,24 @@ int bn_mul_to (bn *t, bn const *right) {
     }
     int s = t->sign * right->sign;
     bn *ret = bn_new();
-    for (size_t i = t->size; i > 0; --i) {
-        bn *tmp = bn_mul_sml(right, t->body[i - 1]);
-        bn_bit_left(ret, 1);
-        bn_add_to(ret, tmp);
-        bn_delete(tmp);
+    resize(ret, t->size + right->size + 1);
+    ret->size = t->size + right->size;
+    for (size_t i = 0; i < t->size; ++i) {
+        long long carry = 0;
+        size_t j = 0;
+        for (; j < right->size; ++j) {
+            long long d = (long long)ret->body[i + j] + (long long)t->body[i] * right->body[j] + carry;
+            carry = (int) (d / bn_MXV);
+            ret->body[i + j] = (int) (d % bn_MXV);
+        }
+        while (carry != 0) {
+            long long d = ret->body[i + j] + carry;
+            carry = (int) (d / bn_MXV);
+            ret->body[i + j] = (int) (d % bn_MXV);
+            ++j;
+        }
     }
+    balance(ret);
     bn_copy(t, ret);
     bn_delete(ret);
     balance(t);
@@ -322,19 +342,7 @@ int bn_cmp (bn const *left, bn const * right) {
     return left->sign * bn_cmp_abs(left, right);
 }
 
-bn *bn_div_sml (bn const *t, int right) {
-    bn *ret = bn_new();
-    resize(ret, t->size);
-    ret->size = t->size;
-    long long carry = 0;
-    for (size_t i = t->size; i > 0; --i) {
-        long long d = (long long) t->body[i - 1] + (long long) carry * (long long) bn_MXV;
-        ret->body[i - 1] = (int)(d / (long long)right);
-        carry = d % (long long)right;
-    }
-    balance(ret);
-    return ret;
-}
+
 
 int bn_div_ (bn *t, bn const *right, bn* rem) {
     if (right->size == 1 && right->body[0] == 0)
@@ -363,7 +371,7 @@ int bn_div_ (bn *t, bn const *right, bn* rem) {
         rem->body[0] = t->body[i];
     }
     for (; i != 0; --i) {
-        int l = 0; int r = bn_MXV;
+        int l = 0; int r = (int)bn_MXV;
         bn *tmp = bn_mul_sml(r_c, (r + l) / 2);
         bn_sub_to(tmp, rem);
         while (r - l > 1) {
@@ -390,7 +398,7 @@ int bn_div_ (bn *t, bn const *right, bn* rem) {
         rem->body[0] = t->body[i - 1];
     }
 
-    int l = 0; int r = bn_MXV;
+    int l = 0; int r = (int)bn_MXV;
     bn *tmp = bn_mul_sml(r_c, (r + l) / 2);
     bn_sub_to(tmp, rem);
     while (r - l > 1) {
@@ -482,6 +490,16 @@ bn *bn_pow (bn const *t, int degree) {
     return ret;
 }
 
+void bn_div_to_sml (bn *t, int right) {
+    long long carry = 0;
+    for (size_t i = t->size; i > 0; --i) {
+        long long d = (long long) t->body[i - 1] + (long long) carry * bn_MXV;
+        t->body[i - 1] = (int)(d / (long long)right);
+        carry = d % (long long)right;
+    }
+    balance(t);
+}
+
 bn *bn_sqr (bn *t) {
     return bn_mul(t, t);
 }
@@ -490,26 +508,32 @@ int bn_root_to (bn *t, int reciprocal) {
     if (t == NULL) return BN_NULL_OBJECT;
     bn *l = bn_new();
     bn_init_int(l, 1);
-    bn_bit_left(l, t->size / (reciprocal + 1));
-    bn *r = bn_div_sml(t, reciprocal);
+    bn_bit_left(l, (int)t->size / reciprocal - 1);
+    bn *r = bn_new();
+    bn_init_int(r, 1);
+    bn_bit_left(r, (int)t->size / reciprocal + 1);
     bn *diff = bn_sub(r, l);
     while (diff->size != 1 || diff->body[0] > 1) {
-        bn *tmp = bn_add(l, r);
-        bn *mid = bn_div_sml(tmp, 2);
-        bn_delete(tmp);
-        bn *pow = reciprocal == 2 ? bn_sqr(mid) : bn_pow(mid, reciprocal);
-        if (bn_cmp_abs(pow, t) < 0) {
-            bn_copy(l, mid);
+        bn *mid = bn_new();//bn_add(l, r);
+        bn_copy(mid, l);
+        bn_add_to(mid, r);
+        bn_div_to_sml(mid, 2);
+//        bn *tmp = bn_add(l, r);
+//        bn *mid = bn_div_sml(tmp, 2);
+//        bn_delete(tmp);
+        bn *cpy = bn_init(mid);
+        if (reciprocal == 2) {
+            bn_mul_to(mid, cpy);
+        } else {
+            bn_pow_to(mid, reciprocal);
         }
-        else {
-            bn_copy(r, mid);
-        }
-        bn *s = bn_sub(r, l);
-//        printf("%s\n%s\n%s\n%s\n\n", bn_to_string(l, 10), bn_to_string(r, 10), bn_to_string(pow, 10), bn_to_string(s, 10));
-        bn_copy(diff, s);
+//        bn *pow = reciprocal == 2 ? bn_sqr(mid) : bn_pow(mid, reciprocal);
+        bn_copy(bn_cmp_abs(mid, t) < 0 ? l : r, cpy);
+//        printf("%s\n%s\n%s\n\n", bn_to_string(l, 10), bn_to_string(r, 10), bn_to_string(pow, 10));
         bn_delete(mid);
-        bn_delete(pow);
-        bn_delete(s);
+        bn_delete(cpy);
+        bn_copy(diff, r);
+        bn_sub_to(diff, l);
     }
     bn *nul = bn_pow(r, reciprocal);
     bn_sub_to(t, nul);
@@ -528,7 +552,7 @@ int bn_init_string_check (const char * s, size_t n, int radix) {
     long long d = 0;
     for (; i < n; ++i)
         d = (long long) (d * (long long)radix) + s[i] - '0';
-    return d >= (long long)bn_MXV;
+    return d >= bn_MXV;
 }
 
 const char * ABC = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -561,29 +585,29 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
         size_t i = 0;
         while (i < counter && s[i] == '0') ++i;
         long long d = 0;
-        while (d < (long long)bn_MXV && i < counter) {
+        while (d < bn_MXV && i < counter) {
             d = (long long)(d * (long long)radix) + convert(s[i++]);
         }
         for (; i < counter; ++i) {
-            if (d >= (long long)bn_MXV) {
-                int dig = (int)(d / (long long)bn_MXV);
+            if (d >= bn_MXV) {
+                int dig = (int)(d / bn_MXV);
                 do {
                     ret[size++] = ABC[dig % radix];
                     dig /= radix;
                 } while (dig != 0);
-                d %= (long long)bn_MXV;
+                d %= bn_MXV;
             }
             else ret[size++] = '0';
             d = (long long)(d * (long long)radix) + convert(s[i]);
         }
-        if (d >= (long long)bn_MXV) {
-            int dig = (int)(d / (long long)bn_MXV);
+        if (d >= bn_MXV) {
+            int dig = (int)(d / bn_MXV);
             do {
                 ret[size++] = ABC[dig % radix];
                 dig /= radix;
             } while (dig != 0);
         } else ret[size++] = '0';
-        ans[am++] = (int)(d % (long long)bn_MXV);
+        ans[am++] = (int)(d % bn_MXV);
         counter = size;
         free(s);
         s = ret;
@@ -592,12 +616,10 @@ int bn_init_string_radix(bn *t, const char *init_string, int radix) {
         long long d = 0;
         for (size_t i = 0; i < size; ++i)
             d = (long long)(d * (long long)radix) + convert(ret[i]);
-        ans[am++] = (int)(d % (long long)bn_MXV);
+        ans[am++] = (int)(d % bn_MXV);
     }
     resize(t, am);
     memcpy(t->body, ans, sizeof(int) * am);
-//    for (size_t i = 0; i < am; ++i)
-//        t->body[i] = ans[i];
     t->size = am;
 
     free(ret);
@@ -615,7 +637,7 @@ int bn_div_sml_(bn *t, int right) {
     ret->size = t->size;
     long long carry = 0;
     for (size_t i = t->size; i > 0; --i) {
-        long long d = (long long)t->body[i - 1] + carry * (long long)bn_MXV;
+        long long d = (long long)t->body[i - 1] + carry * bn_MXV;
         ret->body[i - 1] = (int)(d / (long long)right);
         carry = d % (long long)right;
     }
